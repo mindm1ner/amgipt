@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>암기PT 홈 개편 프로토타입 · 과목별 서재</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
+<link rel="stylesheet" href="app.css">
+<style>
+/* ---------- 프로토타입 전용 ---------- */
+.proto-note {
+  background: var(--warn-bg); border: 1px solid var(--warnb); border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 20px; font-size: .82rem; color: var(--warn);
+}
+.proto-sec {
+  font-size: .78rem; font-weight: 700; letter-spacing: .12em; color: var(--faint);
+  margin: 34px 0 12px; text-transform: uppercase;
+}
+
+/* 오늘의 PT: 전체 수치 대신 "오늘 분량"만 보여주는 컴팩트 바 */
+.pt-bar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--accent); color: var(--bg);
+  border-radius: 999px; padding: 10px 10px 10px 22px;
+  box-shadow: var(--shadow); margin-bottom: 8px;
+}
+.pt-bar .t { font-weight: 800; font-size: .95rem; white-space: nowrap; }
+.pt-bar .d { flex: 1; font-size: .8rem; opacity: .8; min-width: 0; }
+.pt-bar .btn { background: var(--bg); border-color: var(--bg); color: var(--ink); font-weight: 700; border-radius: 999px; padding: 9px 20px; }
+.pt-sub {
+  display: flex; gap: 14px; align-items: center;
+  font-size: .76rem; color: var(--faint); padding: 0 8px; margin-bottom: 6px;
+}
+.pt-sub .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.pt-sub .fill { height: 100%; width: 30%; background: var(--accent); border-radius: 999px; }
+
+/* 서재: 과목 = 책장 한 칸, 범위 = 책 */
+.shelf { margin-bottom: 26px; }
+.shelf-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 4px 6px 10px;
+}
+.shelf-head .subj {
+  font-family: "HsSummerWaterLight", "87MM일상", serif;
+  font-size: 1.35rem; letter-spacing: .06em;
+}
+.shelf-head .meta { font-size: .76rem; color: var(--faint); }
+.shelf-head .today-n { margin-left: auto; font-size: .76rem; color: var(--sub); font-weight: 700; }
+.books { display: grid; gap: 10px; }
+.book {
+  display: flex; align-items: stretch; text-align: left; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px 14px 14px 6px;
+  box-shadow: var(--shadow); overflow: hidden; padding: 0;
+  font: inherit; color: var(--ink);
+  transition: transform .1s, border-color .15s;
+}
+.book:hover { border-color: var(--sub); transform: translateY(-1px); }
+.book .spine {
+  flex: 0 0 10px; background: var(--accent);
+  border-right: 1px solid var(--line);
+}
+.book .spine.thin { background: var(--sub); }
+.book .b-main { flex: 1; padding: 14px 16px; min-width: 0; }
+.book .b-title { font-weight: 700; font-size: .98rem; }
+.book .b-meta { font-size: .76rem; color: var(--sub); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mode-tag {
+  font-size: .7rem; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--sub);
+}
+.b-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 14px; }
+.b-mastery { display: flex; gap: 3px; }
+.b-mastery i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.b-mastery i.on { background: var(--accent); }
+.b-weak { font-size: .72rem; color: var(--no); font-weight: 700; white-space: nowrap; }
+.book .chev { align-self: center; padding-right: 12px; color: var(--faint); font-size: 18px; }
+/* 책장 선반 */
+.shelf-board {
+  height: 5px; margin: 12px 2px 0; border-radius: 3px;
+  background: var(--line);
+  box-shadow: 0 3px 6px -3px rgba(0,0,0,.18);
+}
+
+/* 학습 카드 미리보기 (문구 제거 버전) */
+.mock-sheet { position: static; display: flex; background: none; margin-top: 8px; }
+.mock-sheet .sheet { border-radius: 20px; box-shadow: var(--shadow); border: 1px solid var(--line); animation: none; }
+.footnote { font-size: .78rem; color: var(--faint); margin-top: 10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="proto-note">홈 개편 프로토타입이에요. 실제 앱은 아직 그대로예요. 이 방향이 맞으면 "컨펌"이라고 알려주세요.</div>
+
+  <header class="masthead">
+    <h1>암기PT</h1>
+    <p>임용 암기 트레이너</p>
+  </header>
+
+  <!-- ① 오늘의 PT: 전체 86장 대신 "오늘 분량"만 -->
+  <div class="pt-bar">
+    <span class="t">오늘의 PT</span>
+    <span class="d">12장 · 다시 3 · 복습 4 · 신규 5</span>
+    <button class="btn">시작</button>
+  </div>
+  <div class="pt-sub">
+    <span>미니 골 3/10장</span>
+    <div class="bar"><div class="fill"></div></div>
+    <span>스트릭 4일</span>
+  </div>
+
+  <!-- ② 서재: 과목 = 책장, 범위 = 책 -->
+  <div class="proto-sec">서재</div>
+
+  <div class="shelf">
+    <div class="shelf-head">
+      <span class="subj">사회</span>
+      <span class="meta">범위 1 · 마스터리 12%</span>
+      <span class="today-n">오늘 5장</span>
+    </div>
+    <div class="books">
+      <button class="book">
+        <span class="spine"></span>
+        <span class="b-main">
+          <span class="b-title">한국사 선사~고려</span>
+          <span class="b-meta"><span class="mode-tag">기출 31</span><span class="mode-tag">복습 21</span><span>풀어봄 9</span></span>
+        </span>
+        <span class="b-right">
+          <span class="b-mastery"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>
+          <span class="b-weak">다시 볼 것 3</span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+    </div>
+    <div class="shelf-board"></div>
+  </div>
+
+  <div class="shelf">
+    <div class="shelf-head">
+      <span class="subj">국어</span>
+      <span class="meta">범위 2 · 마스터리 4%</span>
+      <span class="today-n">오늘 7장</span>
+    </div>
+    <div class="books">
+      <button class="book">
+        <span class="spine thin"></span>
+        <span class="b-main">
+          <span class="b-title">각론 읽기</span>
+          <span class="b-meta"><span class="mode-tag">복습 17</span><span>풀어봄 2</span></span>
+        </span>
+        <span class="b-right">
+          <span class="b-mastery"><i class="on"></i><i></i><i></i><i></i><i></i></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+      <button class="book">
+        <span class="spine thin"></span>
+        <span class="b-main">
+          <span class="b-title">각론 쓰기</span>
+          <span class="b-meta"><span class="mode-tag">복습 17</span><span>풀어봄 0</span></span>
+        </span>
+        <span class="b-right">
+          <span class="b-mastery"><i></i><i></i><i></i><i></i><i></i></span>
+        </span>
+        <span class="chev">›</span>
+      </button>
+    </div>
+    <div class="shelf-board"></div>
+  </div>
+  <p class="footnote">책을 누르면 지금처럼 기출·복습 모드 선택 시트가 떠요. 책등 색은 기출이 있는 범위=진하게, 복습만=연하게.</p>
+
+  <!-- ③ 학습 카드: 반복 문구·답안 규칙 제거 버전 -->
+  <div class="proto-sec">학습 카드 (문구 정리 버전)</div>
+  <section class="q-card sess-card last-T">
+    <div class="sess-meta">
+      <span>국어 · 단권화 표11</span>
+      <span class="lastmark m-T">지난 판정 △</span>
+    </div>
+    <div class="q-head"><span class="qno">스키마 이론</span></div>
+    <div class="sub" style="border-top:none; margin-top:6px; padding-top:2px;">
+      <div class="sub-input">
+        <textarea class="answer" placeholder="키워드 나열이든 서술이든, 아는 만큼"></textarea>
+      </div>
+      <div class="sub-actions">
+        <button class="btn primary">채점하기</button>
+        <button class="btn ghost">그냥 정답 보기</button>
+      </div>
+    </div>
+  </section>
+  <p class="footnote">바뀐 점: "인출 / 아는 만큼 인출해 보세요..." 반복 문구 삭제(placeholder 한 줄로), 답안 규칙 접이 박스 삭제, 소문항 라벨도 삭제(카드=문제 하나).</p>
+</div>
+</body>
+</html>
