@@ -156,11 +156,14 @@ function renderDrawer() {
       return `<div class="file blank" style="width:${width}%"><div class="fbody"></div></div>`;
     const cls = f.type === "subject" ? "subject" : "area";
     const act = f.type === "subject" ? `onclick="toggleSub('${f.key}')"` : `onclick="alert('영역 선택: 기출·복습 시트가 뜨는 자리예요')"`;
+    const inner = f.type === "subject"
+      ? `<span class="nm">${f.name}</span><span class="num">${f.num}</span>`
+      : `<span class="num">${f.num}</span><span class="nm">${f.name}</span>`;
     return `
     <div class="file ${cls}" style="width:${width}%">
       <div class="fbody"></div>
       <div class="ftab" style="left:${pos}" ${act}>
-        <span class="num">${f.num}</span><span class="nm">${f.name}</span>
+        ${inner}
       </div>
       ${f.weak ? `<span class="weak">다시 볼 것 ${f.weak}</span>` : ""}
     </div>`;
