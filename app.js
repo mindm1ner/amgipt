@@ -5,8 +5,8 @@
 const DATA = window.DAJIGI_DATA || [];
 const KEY = "dajigi_v1";
 const AI_OFF_NAME = "dajigi_ai_off";
-/* AI 채점은 온고지신과 같은 Supabase Edge Function을 쓴다 (키는 서버 시크릿 — 브라우저에 키 없음) */
-const AI_FN_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/diagnose-reading";
+/* AI 채점: 암기PT 전용 Edge Function (온고지신과 분리, 키는 서버 시크릿) */
+const AI_FN_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/amgipt-grade";
 const AI_FN_KEY = "sb_publishable_0WY4_2tj6O83jVKgWW80rA_G-KIl3su";
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -543,20 +543,25 @@ function renderCheckpoint(finished) {
    역할 분담: 판정 결과의 합산(O/△/X)은 언제나 고정 코드(suggestFrom).
    AI는 "문자 일치에 실패한 키워드가 의미상으로는 들어 있는가"라는 해석만 맡는다. */
 async function aiJudgeKeywords(topic, model, names, input) {
-  const res = await fetch(AI_FN_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      apikey: AI_FN_KEY,
-      Authorization: "Bearer " + AI_FN_KEY
-    },
-    body: JSON.stringify({ type: "grade_keywords", topic, model, names, answer: input })
-  });
+  let res;
+  try {
+    res = await fetch(AI_FN_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        apikey: AI_FN_KEY,
+        Authorization: "Bearer " + AI_FN_KEY
+      },
+      body: JSON.stringify({ type: "grade_keywords", topic, model, names, answer: input })
+    });
+  } catch {
+    throw new Error("서버 연결 안 됨. amgipt-grade 함수 배포와 Verify JWT 끄기를 확인");
+  }
   const text = await res.text();
-  if (!res.ok) throw new Error("HTTP " + res.status);
+  if (!res.ok) throw new Error("HTTP " + res.status + (res.status === 401 ? " (Verify JWT 끄기 필요)" : ""));
   let data;
   try { data = JSON.parse(text); }
-  catch { throw new Error("서버 함수에 채점 기능이 아직 없어요. 엣지 함수 재배포 필요"); }
+  catch { throw new Error("응답 형식 오류"); }
   if (data.error) throw new Error(String(data.error).slice(0, 80));
   return data.results || [];
 }
