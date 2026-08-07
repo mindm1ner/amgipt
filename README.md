@@ -1,10 +1,10 @@
-# 다지기 — 임용 복습 사이트
+# 암기PT — 임용 암기 트레이너 (구 다지기)
 
 기출형 퀴즈를 다시 꺼내 풀고, 키워드 판정 + 소문항 단위 O·△·X 기록으로 약한 곳을 보여 주는 정적 사이트.
 
-- 라이브: https://mindm1ner.github.io/dajigi/
-- 소스(단일 원본): `10-projects/11-app-dev/dajigi/` ← 여기를 고치고 배포 repo로 복사·push
-- 배포 repo: `mindm1ner/dajigi` (GitHub Pages, main 브랜치 루트)
+- 라이브: https://mindm1ner.github.io/amgipt/
+- 소스(단일 원본): `10-projects/11-app-dev/amgipt/` ← 여기를 고치고 배포 repo로 복사·push
+- 배포 repo: `mindm1ner/amgipt` (GitHub Pages, main 브랜치 루트)
 - 기획서: [기획-게이트.md](기획-게이트.md)
 
 ## 구조
@@ -52,7 +52,7 @@ data/dan-*.js   복습 모드 데이터 (window.DAJIGI_DAN.push — 단권화 �
 퀴즈 md를 자동 파싱하지 않는다(파싱 10원칙: 추출기를 늘리지 않는다). 대신 **Claude에게 이관을 위임**한다:
 
 1. 퀴즈 md는 지금처럼 `20-study/22-과목별노트/{과목}/퀴즈/`에 만든다 (공부 흐름 유지)
-2. Claude에게 "다지기에 올려줘"라고 하면 → `00-system/commands/dajigi-add.md` 지침대로
+2. Claude에게 "다지기에 올려줘"라고 하면 → `00-system/commands/amgipt-add.md` 지침대로
    md를 `data/quiz-{날짜}-{주제}.js`로 변환(키워드 그룹 설계 포함)하고 index.html에 script 줄 추가 후 배포
 
 데이터 스키마는 `data/quiz-2026-08-05-hanguksa.js` 맨 위 주석과 실제 구조를 본뜬다.

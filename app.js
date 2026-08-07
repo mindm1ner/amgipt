@@ -4,7 +4,10 @@
 
 const DATA = window.DAJIGI_DATA || [];
 const KEY = "dajigi_v1";
-const AI_KEY_NAME = "dajigi_api_key";
+const AI_OFF_NAME = "dajigi_ai_off";
+/* AI 채점은 온고지신과 같은 Supabase Edge Function을 쓴다 (키는 서버 시크릿 — 브라우저에 키 없음) */
+const AI_FN_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/diagnose-reading";
+const AI_FN_KEY = "sb_publishable_0WY4_2tj6O83jVKgWW80rA_G-KIl3su";
 const DAY = 24 * 60 * 60 * 1000;
 
 /* ---------- 복습 모드: 단권화 데이터 → 퀴즈 구조로 변환 ----------
@@ -53,14 +56,24 @@ function persist() { localStorage.setItem(KEY, JSON.stringify(S)); }
 function subId(quiz, q, sub) { return quiz.id + "|" + q.no + "|" + sub.no; }
 function history(id) { return S.records[id] || []; }
 function latest(id) { const h = history(id); return h.length ? h[h.length - 1] : null; }
-function record(id, r, auto) {
+function record(id, r, auto, miss) {
   const h = S.records[id] || (S.records[id] = []);
   const t = Date.now();
   const last = h[h.length - 1];
+  const m = (miss && miss.length) ? miss : undefined;
   // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
-  if (last && t - last.t < 10 * 60 * 1000) { last.r = r; last.a = auto || last.a; last.t = t; }
-  else h.push({ d: new Date().toISOString().slice(0, 10), r, a: auto || null, t });
+  if (last && t - last.t < 10 * 60 * 1000) { last.r = r; last.a = auto || last.a; last.t = t; if (m) last.m = m; else delete last.m; }
+  else h.push({ d: new Date().toISOString().slice(0, 10), r, a: auto || null, t, ...(m ? { m } : {}) });
   persist();
+}
+
+/* 누가기록: 이 소문항에서 지금까지 놓친 포인트를 집계 */
+function missLog(id) {
+  const counts = new Map();
+  for (const rec of history(id)) for (const name of (rec.m || [])) {
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
 /* ---------- 판정(고정 코드) ---------- */
@@ -95,7 +108,7 @@ function dotsHtml(id) {
 function isWeak(id) { const l = latest(id); return !!l && l.r !== "O"; }
 
 /* ---------- 홈 ---------- */
-function apiKey() { return localStorage.getItem(AI_KEY_NAME) || ""; }
+function aiOn() { return localStorage.getItem(AI_OFF_NAME) !== "1"; }
 
 function quizCard(quiz) {
   let total = 0, tried = 0, ok = 0, weak = 0;
@@ -130,8 +143,8 @@ function renderHome() {
 
   $("#app").innerHTML = `
     <header class="masthead">
-      <h1>다지기</h1>
-      <p>임용 복습 · 기출형 재풀이 + 단권화 키워드 인출</p>
+      <h1>암기PT</h1>
+      <p>임용 암기 트레이너 · 기출형 재풀이 + 단권화 키워드 인출</p>
     </header>
     ${needBackup ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
       ${staleDays !== null && staleDays > 0 ? `마지막 기록 ${staleDays}일 전. ` : ""}백업해 두세요.</span>
@@ -141,16 +154,9 @@ function renderHome() {
     ${DATA.length ? "" : '<div class="empty">아직 퀴즈가 없어요. data/ 폴더에 퀴즈 파일을 추가하세요.</div>'}
     <div class="ai-box">
       <div class="ai-row">
-        <span>🤖 AI 채점(의미 판정): <b class="${apiKey() ? "on" : ""}">${apiKey() ? "켜짐" : "꺼짐"}</b>
-          <span class="ai-hint">— 켜면 표기가 달라도 의미가 같은 키워드를 인정해요</span></span>
-        <button class="btn ghost" data-act="ai-toggle">${apiKey() ? "키 관리" : "API 키 넣기"}</button>
-      </div>
-      <div class="ai-panel" hidden>
-        <input type="password" id="aiKeyInput" placeholder="sk-ant-… (Anthropic API 키)" autocomplete="off">
-        <button class="btn primary" data-act="ai-save">저장</button>
-        <button class="btn ghost" data-act="ai-clear">삭제</button>
-        <p class="ai-note">키는 이 브라우저(localStorage)에만 저장되고, 채점 요청 때 Anthropic API로만 전송돼요.
-        기록 내보내기 파일에는 포함되지 않아요. 공용 PC에서는 넣지 마세요.</p>
+        <span>🤖 AI 의미 판정: <b class="${aiOn() ? "on" : ""}">${aiOn() ? "켜짐" : "꺼짐"}</b>
+          <span class="ai-hint">— 표기가 달라도 의미가 같은 키워드를 인정 (온고지신 서버 사용, 키 불필요)</span></span>
+        <button class="btn ghost" data-act="ai-onoff">${aiOn() ? "끄기" : "켜기"}</button>
       </div>
     </div>
     <footer class="home-foot">
@@ -192,6 +198,12 @@ function renderQuiz(quizId, weakOnly) {
         <div class="sub-head"><span class="sno">${esc(sub.no)}</span>
           ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>
         <div class="sub-prompt md">${md(sub.prompt)}</div>
+        ${(() => {
+          const ml = missLog(id);
+          return ml.length ? `<div class="miss-log">📌 누가기록 — 이전에 놓친 포인트: ` +
+            ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
+            (ml.length > 6 ? " 외" : "") + `</div>` : "";
+        })()}
         <div class="sub-input">${inputHtml}</div>
         <div class="sub-actions">${gradeBtns}</div>
         <div class="reveal"></div>
@@ -228,54 +240,23 @@ function renderQuiz(quizId, weakOnly) {
 /* ---------- AI 채점(의미 판정) ----------
    역할 분담: 판정 결과의 합산(O/△/X)은 언제나 고정 코드(suggestFrom).
    AI는 "문자 일치에 실패한 키워드가 의미상으로는 들어 있는가"라는 해석만 맡는다. */
-const AI_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["results"],
-  properties: {
-    results: {
-      type: "array",
-      items: {
-        type: "object", additionalProperties: false,
-        required: ["name", "found", "evidence"],
-        properties: {
-          name: { type: "string" },
-          found: { type: "boolean" },
-          evidence: { type: "string" }
-        }
-      }
-    }
-  }
-};
-const AI_SYSTEM = "너는 초등 임용 시험 채점 보조다. 임용 서술형은 채점 요소(키워드)가 답안에 포함되었는가의 싸움이다. 각 채점 요소에 대해 수험생 답안이 그 요소를 의미상 담고 있는지만 판정하라. 표기·어순·조사가 달라도 같은 의미면 found=true. 관련 내용이 없거나, 의미가 다르거나, 사실을 틀리게 썼으면 false. evidence에는 답안에서 근거가 된 구절을 20자 이내로 인용하라(근거 없으면 빈 문자열). 후하게 주지 마라 — 애매하면 false. 채점 요소 순서 그대로, 하나도 빠짐없이 결과를 반환하라.";
-
 async function aiJudgeKeywords(topic, model, names, input) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(AI_FN_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey(),
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
+      apikey: AI_FN_KEY,
+      Authorization: "Bearer " + AI_FN_KEY
     },
-    body: JSON.stringify({
-      model: "claude-opus-5",
-      max_tokens: 4000,
-      output_config: { effort: "low", format: { type: "json_schema", schema: AI_SCHEMA } },
-      system: AI_SYSTEM,
-      messages: [{
-        role: "user",
-        content: "주제: " + topic +
-          "\n\n모범답안(단권화 원문):\n" + model +
-          "\n\n채점 요소:\n" + names.map((n, i) => (i + 1) + ". " + n).join("\n") +
-          "\n\n수험생 답안:\n" + input
-      }]
-    })
+    body: JSON.stringify({ type: "grade_keywords", topic, model, names, answer: input })
   });
-  if (!res.ok) throw new Error("HTTP " + res.status + (res.status === 401 ? " (키 확인 필요)" : ""));
-  const data = await res.json();
-  if (data.stop_reason === "refusal") throw new Error("판정 불가 응답");
-  const textBlock = (data.content || []).find(b => b.type === "text");
-  if (!textBlock) throw new Error("빈 응답");
-  return JSON.parse(textBlock.text).results || [];
+  const text = await res.text();
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw new Error("서버 함수에 채점 기능이 아직 없어요 — 엣지 함수 재배포 필요"); }
+  if (data.error) throw new Error(String(data.error).slice(0, 80));
+  return data.results || [];
 }
 
 async function runAiJudge(subEl, topic, sub, input, literalFlags) {
@@ -333,23 +314,30 @@ function showReveal(subEl, graded) {
     const inputs = [...subEl.querySelectorAll("input.answer")].map(i => i.value);
     const flags = judgeTerm(inputs, sub.parts);
     suggest = suggestFrom(flags);
-    judgeHtml = sub.parts.map((p, i) => `
-      <div class="part-verdict">${flags[i] ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>'}
-      ${esc(p.label)} — 정답: <b>${esc(p.accept[0])}</b></div>`).join("");
+    judgeHtml = '<div class="kw-chips">' + sub.parts.map((p, i) => {
+      const nm = p.label + ": " + p.accept[0];
+      return `<span class="kw ${flags[i] ? "hit" : "miss"}" data-act="kw-toggle" data-name="${esc(nm)}">${flags[i] ? "✓" : "✗"} ${esc(nm)}</span>`;
+    }).join("") + "</div>";
   } else if (graded && sub.type === "essay") {
     const input = subEl.querySelector("textarea.answer").value;
     const flags = judgeEssay(input, sub.groups);
     suggest = suggestFrom(flags);
     judgeHtml = '<div class="kw-chips">' + sub.groups.map((g, i) =>
-      `<span class="kw ${flags[i] ? "hit" : "miss"}" data-g="${i}">${flags[i] ? "✓" : "✗"} ${esc(g.name)}</span>`).join("") + "</div>";
-    if (apiKey() && norm(input) !== "" && flags.some(f => !f)) {
+      `<span class="kw ${flags[i] ? "hit" : "miss"}" data-g="${i}" data-act="kw-toggle" data-name="${esc(g.name)}">${flags[i] ? "✓" : "✗"} ${esc(g.name)}</span>`).join("") + "</div>";
+    if (aiOn() && norm(input) !== "" && flags.some(f => !f)) {
       judgeHtml += '<div class="ai-status">🤖 AI가 놓친 키워드의 의미 포함 여부를 판정하는 중…</div>';
       const { q } = findSub(subEl);
       setTimeout(() => runAiJudge(subEl, q.title, sub, input, flags), 0);
     }
-  } else if (sub.type === "essay") {
-    judgeHtml = '<div class="kw-chips">' + sub.groups.map(g =>
-      `<span class="kw">${esc(g.name)}</span>`).join("") + "</div>";
+    judgeHtml += '<div class="kw-note">판정이 틀렸으면 칩을 탭해서 ✓↔✗로 고칠 수 있어요.</div>';
+  } else if (sub.type === "essay" || sub.type === "term") {
+    // 눈풀이: 중립 칩 — 몰랐던 포인트를 탭해서 ✗로 표시하면 누가기록에 쌓인다
+    const names = sub.type === "essay"
+      ? sub.groups.map(g => g.name)
+      : sub.parts.map(p => p.label + ": " + p.accept[0]);
+    judgeHtml = '<div class="kw-note">답을 보고, <b>몰랐던 포인트를 탭</b>해서 ✗로 표시하세요 — 누가기록에 쌓여요.</div>' +
+      '<div class="kw-chips">' + names.map(nm =>
+      `<span class="kw" data-act="kw-toggle" data-name="${esc(nm)}">${esc(nm)}</span>`).join("") + "</div>";
   }
 
   const chosen = null;
@@ -382,20 +370,33 @@ function onAppClick(e) {
     return;
   }
   if (act === "import") { $("#importFile").click(); return; }
-  if (act === "ai-toggle") {
-    const p = $(".ai-panel"); if (p) p.hidden = !p.hidden;
-    return;
-  }
-  if (act === "ai-save") {
-    const v = ($("#aiKeyInput").value || "").trim();
-    if (!v) { alert("키를 입력해 주세요."); return; }
-    localStorage.setItem(AI_KEY_NAME, v);
+  if (act === "ai-onoff") {
+    if (aiOn()) localStorage.setItem(AI_OFF_NAME, "1");
+    else localStorage.removeItem(AI_OFF_NAME);
     renderHome();
     return;
   }
-  if (act === "ai-clear") {
-    localStorage.removeItem(AI_KEY_NAME);
-    renderHome();
+  if (act === "kw-toggle") {
+    // 칩 탭 = 판정 뒤집기(✓↔✗). 눈풀이 모드의 중립 칩은 탭하면 '놓침'으로 표시
+    const chip = btn;
+    if (chip.classList.contains("miss")) {
+      chip.classList.remove("miss"); chip.classList.add("hit");
+      chip.textContent = "✓ " + chip.dataset.name;
+    } else {
+      chip.classList.remove("hit", "ai");
+      chip.classList.add("miss");
+      chip.textContent = "✗ " + chip.dataset.name;
+    }
+    const subEl2 = chip.closest(".sub");
+    if (subEl2 && !subEl2.querySelector(".vbtn.chosen")) {
+      const chips = [...subEl2.querySelectorAll(".kw")];
+      const flags = chips.map(c => !c.classList.contains("miss"));
+      const s = suggestFrom(flags);
+      subEl2.dataset.suggest = s || "";
+      subEl2.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("suggest", b.dataset.v === s));
+      const lbl = subEl2.querySelector(".vlbl");
+      if (lbl && s) lbl.textContent = `내 판정 (제안: ${vName(s)}) →`;
+    }
     return;
   }
 
@@ -406,7 +407,8 @@ function onAppClick(e) {
   if (act === "reveal") showReveal(subEl, false);
   if (act === "verdict") {
     const { id } = findSub(subEl);
-    record(id, btn.dataset.v, subEl.dataset.suggest || null);
+    const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
+    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
     subEl.querySelector(".saved-msg").textContent = "기록됨";
     const head = subEl.querySelector(".sub-head");

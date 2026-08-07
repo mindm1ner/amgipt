@@ -169,7 +169,15 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .kw {
   font-size: .8rem; font-weight: 600; padding: 3px 10px; border-radius: 99px;
   border: 1px solid var(--line); color: var(--ink-soft); background: #fafaf7;
+  cursor: pointer; user-select: none;
 }
+.kw-note { font-size: .78rem; color: var(--ink-faint); margin: 2px 0 8px; }
+.miss-log {
+  background: var(--bad-soft); border: 1px solid #f0d4d0; border-radius: 10px;
+  padding: 8px 12px; margin-top: 8px;
+  font-size: .82rem; color: #8a4a44;
+}
+.miss-log b { color: var(--bad); font-weight: 700; }
 .kw.hit { background: var(--ok-soft); border-color: #bfe3d0; color: var(--ok); }
 .kw.miss { background: var(--bad-soft); border-color: #f0c7c2; color: var(--bad); }
 .part-verdict { font-size: .88rem; margin-bottom: 3px; }
