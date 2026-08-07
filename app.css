@@ -84,6 +84,80 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
 
+/* 오늘의 PT 컴팩트 바 */
+.pt-bar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--accent); color: var(--bg);
+  border-radius: 999px; padding: 10px 10px 10px 22px;
+  box-shadow: var(--shadow); margin-bottom: 8px;
+}
+.pt-bar .t { font-weight: 800; font-size: .95rem; white-space: nowrap; }
+.pt-bar .d { flex: 1; font-size: .8rem; opacity: .82; min-width: 0; }
+.pt-bar .btn { background: var(--bg); border-color: var(--bg); color: var(--ink); font-weight: 700; border-radius: 999px; padding: 9px 20px; }
+.pt-bar .btn:disabled { opacity: .6; }
+.pt-sub {
+  display: flex; gap: 14px; align-items: center;
+  font-size: .76rem; color: var(--faint); padding: 0 8px; margin-bottom: 4px;
+}
+.pt-sub .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.pt-sub .fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }
+
+/* 탭 내비게이션 (서랍 / 오답 / 고질 약점) */
+.navtabs { display: flex; gap: 8px; margin: 16px 0 4px; align-items: center; }
+.nt {
+  font: inherit; font-size: .84rem; font-weight: 700;
+  padding: 7px 16px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card); color: var(--sub);
+  cursor: pointer; text-decoration: none;
+}
+.nt:hover { border-color: var(--sub); }
+.nt.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+/* ---------- 서랍 (파일 캐비닛 홈) ---------- */
+.drawer { padding-top: 28px; }
+.file { position: relative; margin: -13px auto 0; height: 46px; }
+.file .fbody {
+  position: absolute; left: 0; right: 0; top: 13px; bottom: 0;
+  border: 1.5px solid var(--ink); border-bottom: none;
+  border-radius: 12px 12px 0 0; background: var(--bg);
+}
+.file .ftab {
+  position: absolute; top: 0; min-width: 128px; max-width: 62%;
+  border: 1.5px solid var(--ink); border-bottom: none;
+  border-radius: 9px 9px 0 0; background: var(--bg); color: var(--ink);
+  display: flex; align-items: center; gap: 14px; justify-content: space-between;
+  padding: 12px 16px 6px; font: inherit; font-size: .84rem; z-index: 2;
+  cursor: pointer; transition: transform .15s;
+}
+.file .ftab:hover { transform: translateY(-4px); }
+.file .ftab .num { color: var(--sub); font-weight: 600; font-size: .76rem; }
+.file .ftab .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file.subject .ftab {
+  background: var(--ink); color: var(--bg); border-color: var(--ink);
+  font-family: "HsSummerWaterLight", "87MM일상", serif; letter-spacing: .06em; font-size: .95rem;
+}
+.file.subject .ftab .num { color: var(--bg); opacity: .7; font-family: "87MM일상", sans-serif; }
+.file.blank { pointer-events: none; }
+.file .weak {
+  position: absolute; right: 16px; top: 21px; z-index: 2;
+  font-size: .7rem; color: var(--no); font-weight: 700;
+}
+.drawer-front { position: relative; margin-top: -1px; margin-bottom: 8px; }
+.drawer-front .panel {
+  height: 64px; border: 1.5px solid var(--ink); border-radius: 4px 4px 10px 10px;
+  background: var(--bg);
+  transform: perspective(300px) rotateX(-14deg); transform-origin: top;
+}
+.drawer-front .label {
+  position: absolute; left: 50%; top: 26px; transform: translateX(-50%);
+  background: var(--hl); border: 1.5px solid var(--ink); border-radius: 6px;
+  padding: 3px 16px; font-size: .82rem; font-weight: 700; white-space: nowrap; color: var(--ink);
+}
+@media (max-width: 520px) {
+  .file .ftab { min-width: 96px; font-size: .78rem; padding: 12px 11px 6px; gap: 8px; }
+  .file.subject .ftab { font-size: .88rem; }
+}
+
 /* 오늘의 PT (잉크 카드: 라이트=검정 위 흰 글씨, 다크=아이보리 위 검은 글씨) */
 .today-card {
   background: var(--accent); color: var(--bg);

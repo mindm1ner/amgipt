@@ -21,18 +21,14 @@ for (const set of (window.DAJIGI_DAN || [])) {
     scope: "출처: " + set.source,
     base: "단권화 원문 그대로 · 키워드 인출 ver / 설명 쓰기 ver",
     mode: "review",
-    rules: [
-      "키워드 ver → 핵심 키워드를 기억나는 대로 전부 쓴다. 문장일 필요 없다.",
-      "설명 ver → 남에게 설명하듯 서술한다. 임용은 키워드가 포함되었는가의 싸움.",
-      "AI 채점을 켜면(홈 하단) 표기가 달라도 의미가 같은 키워드를 인정해 준다."
-    ],
+    rules: null,
     questions: set.items.map(it => ({
-      no: it.no, points: 0, frame: "단권화 표11 · " + set.subject, title: it.title,
+      no: it.no, points: 0, frame: "단권화 · " + set.subject, title: it.title,
       body: "",
       subs: [
-        { no: "인출", points: 0, type: "essay",
-          prompt: "아는 만큼 **인출**해 보세요. 키워드만 나열해도, 설명으로 풀어도 돼요.",
-          ph: "키워드 나열이든 서술이든 편한 방식으로",
+        { no: "인출", hideHead: true, points: 0, type: "essay",
+          prompt: "",
+          ph: "키워드 나열이든 서술이든, 아는 만큼",
           groups: it.groups, answer: it.model }
       ]
     }))
@@ -137,12 +133,13 @@ function allSubs() {
     }
   return out;
 }
+const NEW_PER_DAY = 10;
 function buildQueue(mode) {
   const subs = allSubs().map(x => ({ ...x, st: subState(x.id) }));
   if (mode === "chronic") return subs.filter(x => x.st.chronic);
   const relearn = subs.filter(x => x.st.status === "relearn" && x.st.isDue);
   const review = subs.filter(x => x.st.status === "review" && x.st.isDue);
-  const fresh = subs.filter(x => x.st.status === "new");
+  const fresh = subs.filter(x => x.st.status === "new").slice(0, NEW_PER_DAY);
   return [...relearn, ...review, ...fresh];
 }
 function queueCounts() {
@@ -263,6 +260,71 @@ function openRangeSheet(name) {
   o.classList.add("show");
 }
 
+/* 서랍: 과목(검정 탭) 아래 영역(흰 탭) 파일이 꽂혀 있다 */
+let DRAWER_OPEN = null; // 첫 렌더에서 초기화
+
+function subjectGroups() {
+  const subs = new Map();
+  for (const quiz of DATA) {
+    if (!subs.has(quiz.subject)) subs.set(quiz.subject, new Map());
+    const rm = subs.get(quiz.subject);
+    const key = quiz.range || quiz.title;
+    if (!rm.has(key)) rm.set(key, []);
+    rm.get(key).push(quiz);
+  }
+  return subs;
+}
+
+function drawerHtml() {
+  if (DRAWER_OPEN === null) {
+    DRAWER_OPEN = {};
+    const first = DATA[0];
+    if (first) DRAWER_OPEN[first.subject] = true;
+  }
+  const TABPOS = ["14%", "42%", "70%"];
+  const files = [{ blank: true }, { blank: true }, { blank: true }];
+  for (const [subj, ranges] of subjectGroups()) {
+    let cards = 0;
+    for (const qs of ranges.values()) for (const q of qs)
+      cards += q.questions.reduce((a, qq) => a + qq.subs.length, 0);
+    files.push({ subject: subj, num: String(cards).padStart(3, "0") });
+    if (DRAWER_OPEN[subj]) {
+      for (const [name, quizzes] of ranges) {
+        let total = 0, weak = 0;
+        quizzes.forEach(quiz => { const s = quizStats(quiz); total += s.total; weak += s.weak; });
+        files.push({ area: name, num: total, weak, single: quizzes.length === 1 ? quizzes[0].id : "" });
+      }
+    }
+  }
+  const n = files.length;
+  return `<div class="drawer">` + files.map((f, i) => {
+    const depth = n - 1 - i;
+    const width = Math.max(70, 100 - depth * 2.6);
+    const pos = TABPOS[i % 3];
+    if (f.blank) return `<div class="file blank" style="width:${width}%"><div class="fbody"></div></div>`;
+    if (f.subject) return `
+      <div class="file subject" style="width:${width}%">
+        <div class="fbody"></div>
+        <button class="ftab" style="left:${pos}" data-act="toggle-subject" data-subj="${esc(f.subject)}">
+          <span class="nm">${esc(f.subject)}</span><span class="num">${f.num}</span>
+        </button>
+      </div>`;
+    return `
+      <div class="file area" style="width:${width}%">
+        <div class="fbody"></div>
+        <button class="ftab" style="left:${pos}" data-act="open-range" data-range="${esc(f.area)}" data-single="${esc(f.single)}">
+          <span class="num">${f.num}</span><span class="nm">${esc(f.area)}</span>
+        </button>
+        ${f.weak ? `<span class="weak">다시 ${f.weak}</span>` : ""}
+      </div>`;
+  }).join("") + `</div>
+  <div class="drawer-front"><div class="panel"></div><div class="label">채영의 임용 서랍</div></div>`;
+}
+
+function totalWeak() {
+  return allSubs().filter(x => { const l = latest(x.id); return l && l.r !== "O"; }).length;
+}
+
 function renderHome() {
   const recCount = Object.values(S.records).reduce((a, h) => a + h.length, 0);
   const needBackup = recCount > 0 && (!S.lastExport || Date.now() - S.lastExport > 7 * DAY);
@@ -271,50 +333,36 @@ function renderHome() {
 
   const qc = queueCounts();
   const doneToday = goalToday();
-  const dueNow = qc.relearn + qc.review;
+  const freshToday = Math.min(qc.fresh, NEW_PER_DAY);
+  const todayTotal = qc.relearn + qc.review + freshToday;
+  const weakN = totalWeak();
 
   $("#app").innerHTML = `
     <header class="masthead">
       <h1>암기PT</h1>
-      <p>임용 암기 트레이너 · 오늘 할 만큼만, 매일</p>
+      <p>임용 암기 트레이너</p>
     </header>
     ${needBackup ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
       ${staleDays !== null && staleDays > 0 ? `마지막 기록 ${staleDays}일 전. ` : ""}백업해 두세요.</span>
       <button class="btn" data-act="export">기록 내보내기</button></div>` : ""}
-    <section class="today-card">
-      <div class="tc-top">
-        <h2>오늘의 PT</h2>
-        <span class="tc-streak">${S.streakDays ? `${ico("bolt")} ${S.streakDays}일 연속` : "오늘부터 시작"}</span>
-      </div>
-      <div class="tc-counts">
-        <span class="cnt c-fresh" title="아직 한 번도 안 본 카드">신규 <b>${qc.fresh}</b></span>
-        <span class="cnt c-relearn" title="몰랐다·부분이어서 오늘 다시 볼 카드">다시 <b>${qc.relearn}</b></span>
-        <span class="cnt c-review" title="완벽이었지만 간격이 돌아온 카드">복습 <b>${qc.review}</b></span>
-      </div>
-      <div class="tc-goal">
-        <div class="goal-bar"><div class="goal-fill" style="width:${Math.min(100, doneToday * 10)}%"></div></div>
-        <span class="goal-txt">미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " 달성" : ""}</span>
-      </div>
-      <div class="actions">
-        <button class="btn primary big" data-act="start-session"
-          ${qc.fresh + dueNow ? "" : "disabled"}>${qc.fresh + dueNow ? "오늘의 PT 시작" : "오늘 볼 카드를 모두 끝냈어요"}</button>
-        ${qc.chronic ? `<button class="btn" data-act="start-chronic">${ico("bolt")} 고질 약점만 (${qc.chronic})</button>` : ""}
-      </div>
-    </section>
-    <h2 class="sec">범위 <span>누르면 기출·복습 모드를 골라요</span></h2>
-    ${[...rangeGroups().entries()].map(([name, quizzes]) => {
-      let total = 0, tried = 0, weak = 0;
-      quizzes.forEach(quiz => { const s = quizStats(quiz); total += s.total; tried += s.tried; weak += s.weak; });
-      return `
-      <button class="range" data-act="open-range" data-range="${esc(name)}">
-        <div class="r-main">
-          <div class="r-title">${esc(quizzes[0].subject)} · ${esc(name)}</div>
-          <div class="r-stats">소문항 ${total} · 풀어봄 <b>${tried}</b> · 모드 ${quizzes.length}개</div>
-        </div>
-        ${weak ? `<span class="r-weak">다시 볼 것 ${weak}</span>` : ""}
-        <span class="chev">›</span>
-      </button>`;
-    }).join("") || '<div class="empty">아직 범위가 없어요. data/ 폴더에 데이터를 추가하세요.</div>'}
+    <div class="pt-bar">
+      <span class="t">오늘의 PT</span>
+      <span class="d">${todayTotal
+        ? `${todayTotal}장 · 다시 ${qc.relearn} · 복습 ${qc.review} · 신규 ${freshToday}`
+        : "오늘 볼 카드를 모두 끝냈어요"}</span>
+      <button class="btn" data-act="start-session" ${todayTotal ? "" : "disabled"}>시작</button>
+    </div>
+    <div class="pt-sub">
+      <span>미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " 달성" : ""}</span>
+      <div class="bar"><div class="fill" style="width:${Math.min(100, doneToday * 10)}%"></div></div>
+      <span>${S.streakDays ? `스트릭 ${S.streakDays}일` : "오늘부터 시작"}</span>
+    </div>
+    <div class="navtabs">
+      <span class="nt on">서랍</span>
+      <a class="nt" href="#wrong">오답${weakN ? ` ${weakN}` : ""}</a>
+      ${qc.chronic ? `<button class="nt" data-act="start-chronic">${ico("bolt")} 고질 약점 ${qc.chronic}</button>` : ""}
+    </div>
+    ${drawerHtml()}
     <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
     <footer class="home-foot">
       <span>기록 ${recCount}건 · 이 브라우저에 저장됨</span>
@@ -346,9 +394,11 @@ function subBlockHtml(quiz, q, sub, qi, si) {
     (ml.length > 6 ? " 외" : "") + `</div>` : "";
   return `
   <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}">
-    <div class="sub-head"><span class="sno">${esc(sub.no)}</span>
-      ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>
-    <div class="sub-prompt md">${md(sub.prompt)}</div>
+    ${sub.hideHead
+      ? (dotsHtml(id) ? `<div class="sub-head">${dotsHtml(id)}</div>` : "")
+      : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
+        ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
+    ${sub.prompt ? `<div class="sub-prompt md">${md(sub.prompt)}</div>` : ""}
     ${mlHtml}
     <div class="sub-input">${inputHtml}</div>
     <div class="sub-actions">${gradeBtns}</div>
@@ -357,11 +407,8 @@ function subBlockHtml(quiz, q, sub, qi, si) {
 }
 
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
-function renderQuiz(quizId, weakOnly) {
-  const quiz = DATA.find(z => z.id === quizId);
-  if (!quiz) { location.hash = ""; return; }
-
-  const qCards = quiz.questions.map((q, qi) => {
+function quizCardsHtml(quiz, weakOnly) {
+  return quiz.questions.map((q, qi) => {
     const subs = q.subs
       .map((sub, si) => ({ sub, si }))
       .filter(x => !weakOnly || isWeak(subId(quiz, q, x.sub)));
@@ -378,6 +425,13 @@ function renderQuiz(quizId, weakOnly) {
       ${subsHtml}
     </section>`;
   }).join("");
+}
+
+function renderQuiz(quizId, weakOnly) {
+  const quiz = DATA.find(z => z.id === quizId);
+  if (!quiz) { location.hash = ""; return; }
+
+  const qCards = quizCardsHtml(quiz, weakOnly);
 
   const totalSubs = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
   const doneSubs = quiz.questions.reduce((a, q) =>
@@ -389,10 +443,33 @@ function renderQuiz(quizId, weakOnly) {
       <span class="ttl">${esc(quiz.title)}${weakOnly ? ' <span class="chip">틀린 것만</span>' : ""}</span>
       <span class="prog" id="prog">기록 ${doneSubs}/${totalSubs}</span>
     </div>
-    <details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
-      <ul>${(quiz.rules || []).map(r => `<li>${esc(r)}</li>`).join("")}</ul>
-    </details>
+    ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
+      <ul>${quiz.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    </details>` : ""}
     ${qCards || '<div class="empty">다시 볼 소문항이 없어요. 전부 O!</div>'}`;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 오답 모아보기 ---------- */
+function renderWrong() {
+  const sections = [];
+  let count = 0;
+  for (const quiz of DATA) {
+    const cards = quizCardsHtml(quiz, true);
+    if (!cards) continue;
+    const s = quizStats(quiz);
+    count += s.weak;
+    sections.push(
+      `<h2 class="sec">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}
+        <span>${quiz.mode === "review" ? "복습" : "기출"} · 다시 볼 것 ${s.weak}</span></h2>` + cards);
+  }
+  $("#app").innerHTML = `
+    <div class="topbar">
+      <a class="back" href="#">← 홈</a>
+      <span class="ttl">오답 모아보기</span>
+      <span class="prog">${count}개</span>
+    </div>
+    ${sections.join("") || '<div class="empty">아직 오답이 없어요. 최근 판정이 부분이나 몰랐다인 카드가 여기 모여요.</div>'}`;
   window.scrollTo(0, 0);
 }
 
@@ -424,7 +501,7 @@ function renderSession() {
           : '<span class="lastmark m-new">처음 보는 카드</span>'}
       </div>
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
-        <span class="qpts">${esc(String(sub.no))}</span></div>
+        ${sub.hideHead ? "" : `<span class="qpts">${esc(String(sub.no))}</span>`}</div>
       ${q.body ? `<details class="ctx"><summary>지문·자료 펼치기</summary><div class="q-body md">${md(q.body)}</div></details>` : ""}
       ${subBlockHtml(quiz, q, sub, qi, si)}
     </section>`;
@@ -616,7 +693,13 @@ function onAppClick(e) {
     renderSession();
     return;
   }
+  if (act === "toggle-subject") {
+    DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
+    renderHome();
+    return;
+  }
   if (act === "open-range") {
+    if (btn.dataset.single) { location.hash = "#q/" + btn.dataset.single; return; }
     openRangeSheet(btn.dataset.range);
     return;
   }
@@ -711,6 +794,7 @@ function onImportFile(e) {
 /* ---------- 라우터 ---------- */
 function render() {
   if (location.hash === "#today") { renderSession(); return; }
+  if (location.hash === "#wrong") { SESSION = null; renderWrong(); return; }
   const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
   if (m) renderQuiz(decodeURIComponent(m[1]), !!m[2]);
   else { SESSION = null; renderHome(); }
