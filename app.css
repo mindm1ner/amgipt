@@ -1,4 +1,10 @@
 /* 다지기 — 임용 복습 사이트 스타일 */
+/* 본문 폰트는 도달점과 동일: 87MM일상 (400 단일 웨이트, 굵기는 Pretendard 폴백) */
+@font-face {
+  font-family: "87MM일상";
+  src: url("fonts/87MMILSANG-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 :root {
   --bg: #f6f5f1;
   --card: #ffffff;
@@ -19,7 +25,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-text-size-adjust: 100%; }
 body {
-  font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  font-family: "87MM일상", "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   background: var(--bg);
   color: var(--ink);
   line-height: 1.65;
