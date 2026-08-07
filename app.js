@@ -612,6 +612,8 @@ function onAppClick(e) {
         bumpGoal();
         SESSION.results[btn.dataset.v]++;
         SESSION.round.push(btn.dataset.v);
+        // 몰랐다 카드는 이번 세션 큐 끝에 다시 들어온다 (같은 세션 재학습)
+        if (btn.dataset.v === "X") SESSION.queue.push(SESSION.queue[SESSION.idx]);
         SESSION.idx++;
         setTimeout(renderSession, 700);
       }
