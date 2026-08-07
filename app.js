@@ -63,7 +63,7 @@ function record(id, r, auto, miss) {
   const m = (miss && miss.length) ? miss : undefined;
   // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
   if (last && t - last.t < 10 * 60 * 1000) { last.r = r; last.a = auto || last.a; last.t = t; if (m) last.m = m; else delete last.m; }
-  else h.push({ d: new Date().toISOString().slice(0, 10), r, a: auto || null, t, ...(m ? { m } : {}) });
+  else h.push({ d: todayStr(), r, a: auto || null, t, ...(m ? { m } : {}) });
   persist();
 }
 
@@ -79,7 +79,10 @@ function missLog(id) {
 /* ---------- 간격 엔진(고정 코드) ----------
    몰랐다(X)→1일, 부분(△)→2일, 완벽(O)→연속 횟수에 따라 4·7·14·21일 */
 const INTERVALS = [4, 7, 14, 21];
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function todayStr() {
+  const t = new Date();
+  return new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
 function addDays(d, n) {
   const t = new Date(d + "T00:00:00");
   t.setDate(t.getDate() + n);
