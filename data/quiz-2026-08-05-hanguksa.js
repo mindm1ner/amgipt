@@ -5,6 +5,7 @@ window.DAJIGI_DATA = window.DAJIGI_DATA || [];
 window.DAJIGI_DATA.push({
   id: "2026-08-05-hanguksa-1",
   subject: "사회",
+  range: "한국사 선사~고려",
   title: "한국사 선사~고려 · 기출형 10문항",
   created: "2026-08-05",
   scope: "단권화 표11 한국사 기입 구간 (문명의 발생 / 국가의 형성 / 통일신라와 발해 / 고려)",

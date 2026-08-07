@@ -6,6 +6,7 @@ window.DAJIGI_DAN = window.DAJIGI_DAN || [];
 window.DAJIGI_DAN.push({
   id: "dan-hanguksa-1",
   subject: "사회",
+  range: "한국사 선사~고려",
   title: "한국사 단권화 복습 · 선사~고려 + 독도",
   created: "2026-08-07",
   source: "사회 단권화 채영_작업본.hwpx 표11 한국사 (기입 구간)",

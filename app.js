@@ -16,6 +16,7 @@ for (const set of (window.DAJIGI_DAN || [])) {
   DATA.push({
     id: set.id,
     subject: set.subject,
+    range: set.range,
     title: set.title,
     scope: "출처: " + set.source,
     base: "단권화 원문 그대로 · 키워드 인출 ver / 설명 쓰기 ver",
@@ -189,26 +190,53 @@ function isWeak(id) { const l = latest(id); return !!l && l.r !== "O"; }
 /* ---------- 홈 ---------- */
 function aiOn() { return localStorage.getItem(AI_OFF_NAME) !== "1"; }
 
-function quizCard(quiz) {
+function quizStats(quiz) {
   let total = 0, tried = 0, ok = 0, weak = 0;
   quiz.questions.forEach(q => q.subs.forEach(sub => {
     total++;
     const l = latest(subId(quiz, q, sub));
     if (l) { tried++; if (l.r === "O") ok++; else weak++; }
   }));
-  return `
-  <section class="quiz-card">
-    <span class="chip">${esc(quiz.subject)}</span>
-    <h2>${esc(quiz.title)}</h2>
-    <div class="meta">${esc(quiz.scope)}<br>${esc(quiz.base)}</div>
-    <div class="stats">문항 ${quiz.questions.length} · 소문항 ${total} ·
-      풀어봄 <b>${tried}</b> · 최근 O <b>${ok}</b>${weak ? ` · 다시 볼 것 <b>${weak}</b>` : ""}</div>
-    <div class="actions">
-      <a class="btn primary" href="#q/${quiz.id}">풀기</a>
-      <a class="btn ${weak ? "" : "ghost"}" href="#q/${quiz.id}/weak"
-         ${weak ? "" : 'style="pointer-events:none;opacity:.4"'}>틀린 것만 (${weak})</a>
-    </div>
-  </section>`;
+  return { total, tried, ok, weak };
+}
+
+/* 범위 목록 (온고지신 도서관 패턴): 범위 하나 = 기출·복습 모드 묶음 */
+function rangeGroups() {
+  const map = new Map();
+  for (const quiz of DATA) {
+    const key = quiz.range || quiz.title;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(quiz);
+  }
+  return map;
+}
+
+function openRangeSheet(name) {
+  const quizzes = (rangeGroups().get(name)) || [];
+  if (!quizzes.length) return;
+  const rows = quizzes.map(quiz => {
+    const s = quizStats(quiz);
+    const isReview = quiz.mode === "review";
+    return `
+    <div class="mode-row">
+      <div class="m-icon">${isReview ? "🧠" : "📝"}</div>
+      <div class="m-main">
+        <div class="m-name">${isReview ? "복습 모드" : "기출 모드"}</div>
+        <div class="m-desc">${isReview
+          ? `단권화 키워드 인출·설명 · 소문항 ${s.total}`
+          : `기출 프레임 문서형 풀이 · 소문항 ${s.total}`} · 풀어봄 ${s.tried}</div>
+      </div>
+      <div class="m-acts">
+        <a class="btn primary" href="#q/${quiz.id}">풀기</a>
+        ${s.weak ? `<a class="btn" href="#q/${quiz.id}/weak">틀린 것만 ${s.weak}</a>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  const o = $(".sheeto");
+  o.querySelector(".sheet").innerHTML =
+    `<div class="grab"></div>
+     <h3>${esc(quizzes[0].subject)} · ${esc(name)}<small>모드를 골라 시작하세요</small></h3>` + rows;
+  o.classList.add("show");
 }
 
 function renderHome() {
@@ -217,8 +245,6 @@ function renderHome() {
   const lastTs = Object.values(S.records).flat().reduce((m, r) => Math.max(m, r.t || 0), 0);
   const staleDays = lastTs ? Math.floor((Date.now() - lastTs) / DAY) : null;
 
-  const gichul = DATA.filter(z => z.mode !== "review");
-  const review = DATA.filter(z => z.mode === "review");
   const qc = queueCounts();
   const doneToday = goalToday();
   const dueNow = qc.relearn + qc.review;
@@ -251,9 +277,21 @@ function renderHome() {
         ${qc.chronic ? `<button class="btn" data-act="start-chronic">🔥 고질 약점만 (${qc.chronic})</button>` : ""}
       </div>
     </section>
-    ${gichul.length ? `<h2 class="sec">기출 모드 <span>기출 프레임 그대로, 문서형 전체 보기</span></h2>` + gichul.map(quizCard).join("") : ""}
-    ${review.length ? `<h2 class="sec">복습 모드 <span>단권화 기반 키워드 인출·설명</span></h2>` + review.map(quizCard).join("") : ""}
-    ${DATA.length ? "" : '<div class="empty">아직 퀴즈가 없어요. data/ 폴더에 퀴즈 파일을 추가하세요.</div>'}
+    <h2 class="sec">범위 <span>누르면 기출·복습 모드를 골라요</span></h2>
+    ${[...rangeGroups().entries()].map(([name, quizzes]) => {
+      let total = 0, tried = 0, weak = 0;
+      quizzes.forEach(quiz => { const s = quizStats(quiz); total += s.total; tried += s.tried; weak += s.weak; });
+      return `
+      <button class="range" data-act="open-range" data-range="${esc(name)}">
+        <div class="r-main">
+          <div class="r-title">${esc(quizzes[0].subject)} · ${esc(name)}</div>
+          <div class="r-stats">소문항 ${total} · 풀어봄 <b>${tried}</b> · 모드 ${quizzes.length}개</div>
+        </div>
+        ${weak ? `<span class="r-weak">다시 볼 것 ${weak}</span>` : ""}
+        <span class="chev">›</span>
+      </button>`;
+    }).join("") || '<div class="empty">아직 범위가 없어요. data/ 폴더에 데이터를 추가하세요.</div>'}
+    <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
     <div class="ai-box">
       <div class="ai-row">
         <span>🤖 AI 의미 판정: <b class="${aiOn() ? "on" : ""}">${aiOn() ? "켜짐" : "꺼짐"}</b>
@@ -559,6 +597,15 @@ function onAppClick(e) {
     SESSION.round = [];
     SESSION.results = { O: 0, T: 0, X: 0 };
     renderSession();
+    return;
+  }
+  if (act === "open-range") {
+    openRangeSheet(btn.dataset.range);
+    return;
+  }
+  if (act === "close-sheet") {
+    if (e.target.closest(".sheet")) return; // 시트 안 클릭은 무시(링크는 그대로 동작)
+    $(".sheeto")?.classList.remove("show");
     return;
   }
   if (act === "ai-onoff") {
