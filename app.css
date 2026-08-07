@@ -10,14 +10,15 @@
   font-weight: normal; font-display: swap;
 }
 
+/* 흑백톤: 잉크가 액센트. 판정색은 채도를 눌러 흑백 안에서만 살짝 구분 */
 :root {
   --bg: #f6f5f1; --card: #ffffff; --ink: #2b2a27; --sub: #8a877f; --faint: #aaa69c;
   --line: #e7e4dc; --hover: #efece4;
-  --accent: #2F7A56; --accent-soft: #e4f0e9;
-  --ok: #2F7A56; --ok-bg: #e4f0e9; --okb: #bfe0cf;
-  --no: #c0584b; --no-bg: #f7e6e3; --nob: #eecbc4;
-  --warn: #c98a2b; --warn-bg: #f8efdd; --warnb: #f0d9b8;
-  --hl: #ffe9a8;
+  --accent: #2b2a27; --accent-soft: #eceae4;
+  --ok: #55705f; --ok-bg: #eaeeeb; --okb: #d2dbd5;
+  --no: #a26056; --no-bg: #f1e9e7; --nob: #ddccc8;
+  --warn: #97804f; --warn-bg: #f1ede2; --warnb: #ddd4bd;
+  --hl: #EDE8DF;
   --bar-bg: rgba(246, 245, 241, .96);
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.05);
   font-size: 16px;
@@ -26,11 +27,11 @@
   :root {
     --bg: #1C1B18; --card: #26231E; --ink: #EDE8DF; --sub: #9C9486; --faint: #7b746a;
     --line: #37332C; --hover: #2E2B25;
-    --accent: #5FA97F; --accent-soft: #24352C;
-    --ok: #5FA97F; --ok-bg: #24352C; --okb: #2F4A3B;
-    --no: #D97A66; --no-bg: #3A2622; --nob: #4A302B;
-    --warn: #D8A554; --warn-bg: #38301F; --warnb: #4A4029;
-    --hl: #4A3F14;
+    --accent: #EDE8DF; --accent-soft: #33302a;
+    --ok: #8fa398; --ok-bg: #262b28; --okb: #3a423d;
+    --no: #c29188; --no-bg: #322724; --nob: #45332f;
+    --warn: #b3a077; --warn-bg: #302c22; --warnb: #453e2d;
+    --hl: #57534A;
     --bar-bg: rgba(28, 27, 24, .96);
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35);
   }
@@ -63,7 +64,7 @@ body {
 }
 .btn:hover { border-color: var(--accent); }
 .btn:active { transform: scale(.98); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.ghost { background: transparent; color: var(--sub); }
 .btn:disabled { opacity: .45; cursor: default; transform: none; }
@@ -73,7 +74,7 @@ body {
 .masthead { margin: 4px 0 22px; text-align: left; }
 .masthead h1 {
   font-family: "HsSummerWaterLight", "87MM일상", Batang, serif;
-  font-size: 2rem; font-weight: normal; letter-spacing: .08em; color: var(--accent);
+  font-size: 2rem; font-weight: normal; letter-spacing: .08em; color: var(--ink);
 }
 .masthead p { color: var(--sub); font-size: .82rem; margin-top: 4px; }
 .banner {
@@ -83,32 +84,29 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
 
-/* 오늘의 PT */
+/* 오늘의 PT (잉크 카드: 라이트=검정 위 흰 글씨, 다크=아이보리 위 검은 글씨) */
 .today-card {
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--bg);
   border-radius: 18px; padding: 22px 24px; margin-bottom: 20px;
   box-shadow: var(--shadow);
 }
 .tc-top { display: flex; align-items: baseline; justify-content: space-between; }
 .tc-top h2 { font-size: 1.15rem; letter-spacing: -.01em; }
-.tc-streak { font-size: .82rem; opacity: .92; }
+.tc-streak { font-size: .82rem; opacity: .85; }
 .tc-counts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .cnt {
   font-size: .84rem; font-weight: 600; padding: 5px 12px; border-radius: 999px;
-  background: rgba(255,255,255,.15);
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
 .cnt b { font-weight: 800; }
-.cnt.c-fresh b { color: #cfe8ff; }
-.cnt.c-relearn b { color: #ffd2c9; }
-.cnt.c-review b { color: #ffe9a8; }
 .tc-goal { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-.goal-bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(255,255,255,.25); overflow: hidden; }
-.goal-fill { height: 100%; background: var(--hl); border-radius: 999px; transition: width .3s; }
-.goal-txt { font-size: .8rem; opacity: .95; white-space: nowrap; }
+.goal-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, currentColor 25%, transparent); overflow: hidden; }
+.goal-fill { height: 100%; background: currentColor; border-radius: 999px; transition: width .3s; }
+.goal-txt { font-size: .8rem; opacity: .9; white-space: nowrap; }
 .today-card .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
-.today-card .btn.primary { background: #fff; border-color: #fff; color: var(--accent); }
-.today-card .btn:not(.primary) { background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.35); color: #fff; }
-.today-card .btn:disabled { opacity: .75; }
+.today-card .btn.primary { background: var(--bg); border-color: var(--bg); color: var(--ink); }
+.today-card .btn:not(.primary) { background: transparent; border-color: color-mix(in srgb, currentColor 40%, transparent); color: inherit; }
+.today-card .btn:disabled { opacity: .7; }
 
 /* 범위 목록 (온고지신 도서관 패턴) */
 h2.sec {

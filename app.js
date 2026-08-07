@@ -30,13 +30,9 @@ for (const set of (window.DAJIGI_DAN || [])) {
       no: it.no, points: 0, frame: "단권화 표11 · " + set.subject, title: it.title,
       body: "",
       subs: [
-        { no: "키워드", points: 0, type: "essay",
-          prompt: "핵심 키워드를 기억나는 대로 **전부** 쓰세요.",
-          ph: "키워드를 쉼표나 줄바꿈으로 나열해도 돼요",
-          groups: it.groups, answer: it.model },
-        { no: "설명", points: 0, type: "essay",
-          prompt: "남에게 설명하듯 서술하세요. 키워드가 자연스럽게 들어가야 득점이에요.",
-          ph: "아는 만큼 서술해 보세요",
+        { no: "인출", points: 0, type: "essay",
+          prompt: "아는 만큼 **인출**해 보세요. 키워드만 나열해도, 설명으로 풀어도 돼요.",
+          ph: "키워드 나열이든 서술이든 편한 방식으로",
           groups: it.groups, answer: it.model }
       ]
     }))
@@ -53,6 +49,22 @@ function loadStore() {
 }
 let S = loadStore();
 function persist() { localStorage.setItem(KEY, JSON.stringify(S)); }
+
+/* 마이그레이션: 복습 모드 소문항이 키워드/설명 2개에서 인출 1개로 통합됨. 기존 기록 병합 */
+(function migrateDanSubIds() {
+  let changed = false;
+  for (const key of Object.keys(S.records)) {
+    const m = key.match(/^(dan-.+\|\d+)\|(키워드|설명)$/);
+    if (!m) continue;
+    const nk = m[1] + "|인출";
+    const merged = (S.records[nk] || []).concat(S.records[key]);
+    merged.sort((a, b) => (a.t || 0) - (b.t || 0));
+    S.records[nk] = merged;
+    delete S.records[key];
+    changed = true;
+  }
+  if (changed) persist();
+})();
 
 function subId(quiz, q, sub) { return quiz.id + "|" + q.no + "|" + sub.no; }
 function history(id) { return S.records[id] || []; }
@@ -304,13 +316,6 @@ function renderHome() {
       </button>`;
     }).join("") || '<div class="empty">아직 범위가 없어요. data/ 폴더에 데이터를 추가하세요.</div>'}
     <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
-    <div class="ai-box">
-      <div class="ai-row">
-        <span>${ico("spark")} AI 의미 판정: <b class="${aiOn() ? "on" : ""}">${aiOn() ? "켜짐" : "꺼짐"}</b>
-          <span class="ai-hint">표기가 달라도 의미가 같은 키워드를 인정해요. 온고지신 서버라 키가 필요 없어요</span></span>
-        <button class="btn ghost" data-act="ai-onoff">${aiOn() ? "끄기" : "켜기"}</button>
-      </div>
-    </div>
     <footer class="home-foot">
       <span>기록 ${recCount}건 · 이 브라우저에 저장됨</span>
       <span class="spacer"></span>
@@ -618,12 +623,6 @@ function onAppClick(e) {
   if (act === "close-sheet") {
     if (e.target.closest(".sheet")) return; // 시트 안 클릭은 무시(링크는 그대로 동작)
     $(".sheeto")?.classList.remove("show");
-    return;
-  }
-  if (act === "ai-onoff") {
-    if (aiOn()) localStorage.setItem(AI_OFF_NAME, "1");
-    else localStorage.removeItem(AI_OFF_NAME);
-    renderHome();
     return;
   }
   if (act === "kw-toggle") {
