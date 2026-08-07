@@ -542,7 +542,7 @@ function renderCheckpoint(finished) {
 /* ---------- AI 채점(의미 판정) ----------
    역할 분담: 판정 결과의 합산(O/△/X)은 언제나 고정 코드(suggestFrom).
    AI는 "문자 일치에 실패한 키워드가 의미상으로는 들어 있는가"라는 해석만 맡는다. */
-async function aiJudgeKeywords(topic, model, names, input) {
+async function aiJudgeKeywords(topic, model, names, matched, input) {
   let res;
   try {
     res = await fetch(AI_FN_URL, {
@@ -552,7 +552,7 @@ async function aiJudgeKeywords(topic, model, names, input) {
         apikey: AI_FN_KEY,
         Authorization: "Bearer " + AI_FN_KEY
       },
-      body: JSON.stringify({ type: "grade_keywords", topic, model, names, answer: input })
+      body: JSON.stringify({ type: "grade_keywords", topic, model, names, matched, answer: input })
     });
   } catch {
     throw new Error("서버 연결 안 됨. amgipt-grade 함수 배포와 Verify JWT 끄기를 확인");
@@ -563,31 +563,56 @@ async function aiJudgeKeywords(topic, model, names, input) {
   try { data = JSON.parse(text); }
   catch { throw new Error("응답 형식 오류"); }
   if (data.error) throw new Error(String(data.error).slice(0, 80));
-  return data.results || [];
+  return data;
 }
 
 async function runAiJudge(subEl, topic, sub, input, literalFlags) {
   const missIdx = literalFlags.map((f, i) => (f ? -1 : i)).filter(i => i >= 0);
   const statusEl = () => subEl.querySelector(".ai-status");
   try {
-    const results = await aiJudgeKeywords(
-      topic, sub.answer, missIdx.map(i => sub.groups[i].name), input);
+    const data = await aiJudgeKeywords(
+      topic, sub.answer,
+      missIdx.map(i => sub.groups[i].name),
+      literalFlags.map((f, i) => f ? sub.groups[i].name : null).filter(Boolean),
+      input);
+    const results = data.results || [];
     const flags = literalFlags.slice();
+    const notes = [];
     missIdx.forEach((gi, k) => {
       const r = results[k];
-      if (r && r.found) {
+      if (!r) return;
+      // 구버전 함수 호환: found(bool)만 있으면 good/missed로 해석
+      const verdict = r.verdict || (r.found ? "good" : "missed");
+      const chip = subEl.querySelector(`.kw[data-g="${gi}"]`);
+      const nm = sub.groups[gi].name;
+      if (verdict === "good") {
         flags[gi] = true;
-        const chip = subEl.querySelector(`.kw[data-g="${gi}"]`);
         if (chip) {
           chip.classList.remove("miss");
           chip.classList.add("hit", "ai");
-          chip.textContent = "✓ " + sub.groups[gi].name + " (의미)";
+          chip.textContent = "✓ " + nm + " (의미)";
           if (r.evidence) chip.title = "근거: " + r.evidence;
         }
+      } else if (verdict === "partial") {
+        if (chip) {
+          chip.classList.remove("miss");
+          chip.classList.add("part");
+          chip.textContent = "△ " + nm;
+          if (r.note) chip.title = r.note;
+        }
+        if (r.note) notes.push({ mark: "△", nm, note: r.note });
+      } else {
+        if (chip && r.note) chip.title = r.note;
+        if (r.note) notes.push({ mark: "✗", nm, note: r.note });
       }
     });
     const s = statusEl();
-    if (s) s.innerHTML = ico("spark") + " AI 판정 완료. 표기가 달라도 의미가 같으면 (의미)로 인정했어요. 칩을 누르면 근거가 보여요.";
+    if (s) {
+      s.classList.add("ai-diag");
+      s.innerHTML =
+        `<div class="diag-sum">${ico("spark")} <b>AI 진단</b> ${esc(data.summary || "판정을 마쳤어요.")}</div>` +
+        notes.map(n => `<div class="dnote"><span class="${n.mark === "△" ? "dm-part" : "dm-miss"}">${n.mark}</span> <b>${esc(n.nm)}</b> ${esc(n.note)}</div>`).join("");
+    }
     if (!subEl.querySelector(".vbtn.chosen")) {
       const newSuggest = suggestFrom(flags);
       subEl.dataset.suggest = newSuggest || "";
