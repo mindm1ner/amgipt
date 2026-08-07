@@ -56,6 +56,11 @@ body {
   font-size: .88rem; color: #6d4d07;
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
+h2.sec {
+  font-size: 1.02rem; letter-spacing: -.01em;
+  margin: 26px 0 10px; display: flex; align-items: baseline; gap: 8px;
+}
+h2.sec span { font-size: .8rem; font-weight: 500; color: var(--ink-faint); }
 .quiz-card {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
   padding: 20px 22px; margin-bottom: 14px;
@@ -65,6 +70,23 @@ body {
 .quiz-card .stats { color: var(--ink-faint); font-size: .82rem; margin-top: 10px; }
 .quiz-card .stats b { color: var(--ink-soft); font-weight: 600; }
 .quiz-card .actions { display: flex; gap: 8px; margin-top: 14px; }
+.ai-box {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px 18px; margin-top: 22px; font-size: .88rem;
+}
+.ai-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ai-row b { color: var(--ink-faint); }
+.ai-row b.on { color: var(--ok); }
+.ai-hint { color: var(--ink-faint); font-size: .8rem; }
+.ai-panel { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ai-panel input {
+  flex: 1; min-width: 220px; font: inherit; font-size: .88rem;
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
+}
+.ai-note { width: 100%; font-size: .78rem; color: var(--ink-faint); margin-top: 2px; }
+.ai-status { font-size: .82rem; color: var(--ink-soft); margin-bottom: 10px; }
+.kw.hit.ai { border-style: dashed; cursor: help; }
+
 .home-foot {
   margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line);
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;

@@ -12,9 +12,25 @@
 ```
 index.html      셸. 새 퀴즈 추가 시 data/ script 한 줄 추가
 app.css         스타일
-app.js          라우터·판정(고정 코드)·기록(localStorage)
-data/*.js       퀴즈 데이터 (window.DAJIGI_DATA.push 형식)
+app.js          라우터·판정(고정 코드)·기록(localStorage)·AI 채점
+data/quiz-*.js  기출 모드 데이터 (window.DAJIGI_DATA.push 형식)
+data/dan-*.js   복습 모드 데이터 (window.DAJIGI_DAN.push — 단권화 원문 기반)
 ```
+
+## 두 모드
+
+- **기출 모드**: 기출 프레임 병렬 출제 퀴즈를 문항 그대로 푼다.
+- **복습 모드(단권화)**: 단권화 표에서 뽑은 항목별로 ①키워드 인출 ver ②설명 쓰기 ver.
+  데이터는 `dan-*.js`의 `items: [{no, title, groups, model}]` — 앱이 소문항 2개로 펼친다.
+  `model`은 단권화 **원문 그대로**(요약 금지 — 스모크 테스트가 키워드↔원문 대조를 검사).
+
+## AI 채점 (의미 판정)
+
+- 홈 하단에서 Anthropic API 키 입력(localStorage `dajigi_api_key` — 기록 내보내기에 미포함).
+- 흐름: 문자 일치 판정(고정 코드) → 놓친 키워드만 `claude-opus-5`에 의미 포함 여부 질의
+  (구조화 출력 json_schema로 응답 고정, effort low) → 의미 인정 키워드는 점선 칩 "(의미)" + 근거 툴팁.
+- ⭐ 최종 O/△/X 합산은 언제나 고정 코드(`suggestFrom`) — AI는 키워드별 해석만.
+- 키 없음/요청 실패 → 문자 일치 판정만으로 동작(그레이스풀 폴백).
 
 ## 판정 규칙 (고정 코드 — app.js)
 
