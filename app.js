@@ -152,6 +152,38 @@ function queueCounts() {
   };
 }
 
+/* 음성 인식(Web Speech API): 마이크 버튼 토글, 말한 내용이 답안 칸에 실시간 입력 */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const MIC_OK = !!SR;
+let MIC = null;
+function stopMic() {
+  if (!MIC) return;
+  const m = MIC; MIC = null;
+  try { m.rec.stop(); } catch { /* 무시 */ }
+  if (m.btn && m.btn.isConnected) m.btn.classList.remove("rec");
+}
+function toggleMic(subEl, btn) {
+  if (MIC) { stopMic(); return; }
+  const ta = subEl.querySelector("textarea.answer");
+  if (!ta) return;
+  const rec = new SR();
+  rec.lang = "ko-KR";
+  rec.continuous = true;
+  rec.interimResults = true;
+  const base = ta.value ? ta.value.replace(/\s+$/, "") + " " : "";
+  rec.onresult = ev => {
+    let text = "";
+    for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript;
+    ta.value = base + text;
+    ta.dispatchEvent(new Event("input", { bubbles: true })); // 초안 자동저장 연동
+  };
+  rec.onend = () => stopMic();
+  rec.onerror = () => stopMic();
+  try { rec.start(); } catch { return; }
+  btn.classList.add("rec");
+  MIC = { rec, btn };
+}
+
 /* 답안 초안 자동저장: 쓰다가 나가도 안 사라진다. 판정 확정 시 지운다 */
 const DRAFT_KEY = "dajigi_drafts";
 let DRAFTS = {};
@@ -206,7 +238,8 @@ const ICONS = {
   bolt: '<polygon points="13 2 3 14 11 14 10 22 21 9 13 9 13 2" fill="currentColor" stroke="none"/>',
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
   spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="currentColor" stroke="none"/>',
-  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9"/>'
+  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9"/>',
+  mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>'
 };
 function ico(name) {
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -405,7 +438,10 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       <div class="part-row"><span class="plabel">${esc(p.label)}</span>
       <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
   } else if (sub.type === "essay") {
-    inputHtml = `<textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}">${esc(draftGet(id))}</textarea>`;
+    inputHtml = `<div class="ta-wrap">
+      <textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}">${esc(draftGet(id))}</textarea>
+      ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
+    </div>`;
   }
   const gradeBtns = sub.type === "self"
     ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
@@ -792,8 +828,9 @@ function onAppClick(e) {
   const subEl = btn.closest(".sub");
   if (!subEl) return;
 
-  if (act === "grade") showReveal(subEl, true);
-  if (act === "reveal") showReveal(subEl, false);
+  if (act === "mic") { toggleMic(subEl, btn); return; }
+  if (act === "grade") { stopMic(); showReveal(subEl, true); }
+  if (act === "reveal") { stopMic(); showReveal(subEl, false); }
   if (act === "verdict") {
     const { quiz, id } = findSub(subEl);
     const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
@@ -851,6 +888,7 @@ function onImportFile(e) {
 
 /* ---------- 라우터 ---------- */
 function render() {
+  stopMic();
   if (location.hash === "#today") { renderSession(); return; }
   if (location.hash === "#wrong") { SESSION = null; renderWrong(); return; }
   const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
