@@ -191,14 +191,17 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .note { font-size: .84rem; color: var(--ink-soft); background: #fbfaf7; border-radius: 10px; padding: 9px 13px; margin-bottom: 10px; }
 .note::before { content: "※ "; }
 
-/* O△X 기록 */
-.verdict-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.verdict-row .vlbl { font-size: .84rem; color: var(--ink-soft); font-weight: 600; }
+/* O△X 기록 (몰랐다/부분/완벽 3버튼 + 간격 미리보기) */
+.verdict-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.verdict-row .vlbl { font-size: .84rem; color: var(--ink-soft); font-weight: 600; width: 100%; }
+.vbtns { display: flex; gap: 8px; flex: 1; }
 .vbtn {
-  font: inherit; font-weight: 800; font-size: .92rem;
-  width: 62px; padding: 6px 0; border-radius: 10px; cursor: pointer;
+  font: inherit; font-weight: 800; font-size: .9rem;
+  flex: 1; min-width: 86px; padding: 8px 4px 6px; border-radius: 12px; cursor: pointer;
   border: 1.5px solid var(--line); background: var(--card); color: var(--ink-faint);
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
 }
+.vbtn .ivl { font-size: .7rem; font-weight: 500; opacity: .75; }
 .vbtn[data-v="O"].suggest, .vbtn[data-v="O"]:hover { border-color: var(--ok); color: var(--ok); }
 .vbtn[data-v="T"].suggest, .vbtn[data-v="T"]:hover { border-color: var(--mid); color: var(--mid); }
 .vbtn[data-v="X"].suggest, .vbtn[data-v="X"]:hover { border-color: var(--bad); color: var(--bad); }
@@ -215,6 +218,79 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .dot.X { background: var(--bad); }
 
 .empty { text-align: center; color: var(--ink-faint); padding: 48px 0; font-size: .92rem; }
+
+/* ---------- 오늘의 PT (홈) ---------- */
+.today-card {
+  background: linear-gradient(135deg, #2b59c3, #234ba8);
+  color: #fff; border-radius: 18px; padding: 22px 24px; margin-bottom: 22px;
+  box-shadow: 0 8px 24px -14px rgba(43, 89, 195, .55);
+}
+.tc-top { display: flex; align-items: baseline; justify-content: space-between; }
+.tc-top h2 { font-size: 1.2rem; letter-spacing: -.01em; }
+.tc-streak { font-size: .84rem; opacity: .9; }
+.tc-counts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.cnt {
+  font-size: .84rem; font-weight: 600; padding: 5px 12px; border-radius: 99px;
+  background: rgba(255,255,255,.14);
+}
+.cnt b { font-weight: 800; }
+.cnt.c-fresh b { color: #bcd2ff; }
+.cnt.c-relearn b { color: #ffc4bd; }
+.cnt.c-review b { color: #b9f0d3; }
+.tc-goal { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.goal-bar { flex: 1; height: 6px; border-radius: 99px; background: rgba(255,255,255,.22); overflow: hidden; }
+.goal-fill { height: 100%; background: #ffd76a; border-radius: 99px; transition: width .3s; }
+.goal-txt { font-size: .8rem; opacity: .95; white-space: nowrap; }
+.today-card .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.btn.big { font-size: 1rem; padding: 11px 22px; border-radius: 12px; }
+.today-card .btn.primary { background: #fff; border-color: #fff; color: #234ba8; }
+.today-card .btn.primary:hover { background: #f0f4ff; }
+.today-card .btn:not(.primary) { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.3); color: #fff; }
+.today-card .btn:disabled { opacity: .7; cursor: default; }
+
+/* ---------- 세션 (카드 플로우) ---------- */
+.sessbar { flex: 1; height: 5px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.sessbar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
+.sess-card { border-left: 5px solid var(--line); }
+.sess-card.last-O { border-left-color: var(--ok); }
+.sess-card.last-T { border-left-color: var(--mid); }
+.sess-card.last-X { border-left-color: var(--bad); }
+.sess-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: .78rem; color: var(--ink-faint); margin-bottom: 10px;
+}
+.lastmark { font-weight: 700; padding: 2px 9px; border-radius: 99px; font-size: .74rem; }
+.lastmark.m-O { background: var(--ok-soft); color: var(--ok); }
+.lastmark.m-T { background: var(--mid-soft); color: var(--mid); }
+.lastmark.m-X { background: var(--bad-soft); color: var(--bad); }
+.lastmark.m-new { background: var(--accent-soft); color: var(--accent); }
+.chronic { font-weight: 700; font-size: .74rem; color: var(--bad); }
+details.ctx {
+  background: #fbfaf7; border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 14px; margin: 6px 0 4px; font-size: .9rem;
+}
+details.ctx summary { cursor: pointer; font-weight: 600; color: var(--ink-soft); font-size: .84rem; }
+details.ctx .q-body { overflow-x: auto; }
+.sess-card .sub { border-top: none; margin-top: 8px; padding-top: 4px; }
+
+/* ---------- 체크포인트 ---------- */
+.checkpoint {
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+  padding: 34px 26px; margin-top: 40px; text-align: center;
+}
+.checkpoint h2 { font-size: 1.3rem; margin-bottom: 18px; }
+.cp-counts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cp { font-weight: 700; font-size: .9rem; padding: 6px 14px; border-radius: 99px; }
+.cp.cO { background: var(--ok-soft); color: var(--ok); }
+.cp.cT { background: var(--mid-soft); color: var(--mid); }
+.cp.cX { background: var(--bad-soft); color: var(--bad); }
+.cp-mastery { margin: 22px auto 0; max-width: 380px; }
+.cp-lbl { font-size: .78rem; color: var(--ink-faint); margin-bottom: 6px; }
+.mastery-bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.mastery-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); border-radius: 99px; transition: width .5s; }
+.cp-pct { font-size: 1.4rem; font-weight: 800; margin-top: 8px; color: var(--ink); }
+.cp-goal { font-size: .86rem; color: var(--ink-soft); margin-top: 16px; }
+.cp-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
 @media (max-width: 520px) {
   #app { padding: 16px 12px 80px; }
   .q-card { padding: 16px; }

@@ -76,6 +76,82 @@ function missLog(id) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
+/* ---------- 간격 엔진(고정 코드) ----------
+   몰랐다(X)→1일, 부분(△)→2일, 완벽(O)→연속 횟수에 따라 4·7·14·21일 */
+const INTERVALS = [4, 7, 14, 21];
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function addDays(d, n) {
+  const t = new Date(d + "T00:00:00");
+  t.setDate(t.getDate() + n);
+  const off = t.getTimezoneOffset();
+  const loc = new Date(t.getTime() - off * 60 * 1000);
+  return loc.toISOString().slice(0, 10);
+}
+function oStreak(id) {
+  const h = history(id);
+  let s = 0;
+  for (let i = h.length - 1; i >= 0 && h[i].r === "O"; i--) s++;
+  return s;
+}
+function subState(id) {
+  const h = history(id);
+  if (!h.length) return { status: "new", isDue: false, chronic: false };
+  const last = h[h.length - 1];
+  const streak = oStreak(id);
+  let ivl;
+  if (last.r === "X") ivl = 1;
+  else if (last.r === "T") ivl = 2;
+  else ivl = INTERVALS[Math.min(streak - 1, INTERVALS.length - 1)];
+  const due = addDays(last.d, ivl);
+  const chronic = h.length >= 2 && h[h.length - 1].r === "X" && h[h.length - 2].r === "X";
+  return { status: last.r === "O" ? "review" : "relearn", last, ivl, due, isDue: due <= todayStr(), chronic, streak };
+}
+function previewIvl(id, v) {
+  if (v === "X") return "내일 다시";
+  if (v === "T") return "2일 뒤";
+  return INTERVALS[Math.min(oStreak(id), INTERVALS.length - 1)] + "일 뒤";
+}
+function allSubs() {
+  const out = [];
+  for (const quiz of DATA)
+    for (let qi = 0; qi < quiz.questions.length; qi++) {
+      const q = quiz.questions[qi];
+      for (let si = 0; si < q.subs.length; si++)
+        out.push({ quiz, q, sub: q.subs[si], qi, si, id: subId(quiz, q, q.subs[si]) });
+    }
+  return out;
+}
+function buildQueue(mode) {
+  const subs = allSubs().map(x => ({ ...x, st: subState(x.id) }));
+  if (mode === "chronic") return subs.filter(x => x.st.chronic);
+  const relearn = subs.filter(x => x.st.status === "relearn" && x.st.isDue);
+  const review = subs.filter(x => x.st.status === "review" && x.st.isDue);
+  const fresh = subs.filter(x => x.st.status === "new");
+  return [...relearn, ...review, ...fresh];
+}
+function queueCounts() {
+  const subs = allSubs().map(x => subState(x.id));
+  return {
+    fresh: subs.filter(s => s.status === "new").length,
+    relearn: subs.filter(s => s.status === "relearn" && s.isDue).length,
+    review: subs.filter(s => s.status === "review" && s.isDue).length,
+    chronic: subs.filter(s => s.chronic).length
+  };
+}
+
+/* 데일리 골(미니 10장) + 스트릭 */
+function bumpGoal() {
+  const today = todayStr();
+  if (!S.goal || S.goal.d !== today) S.goal = { d: today, n: 0 };
+  S.goal.n++;
+  if (S.goal.n === 10 && S.lastGoalDate !== today) {
+    S.streakDays = (S.lastGoalDate === addDays(today, -1)) ? (S.streakDays || 0) + 1 : 1;
+    S.lastGoalDate = today;
+  }
+  persist();
+}
+function goalToday() { return (S.goal && S.goal.d === todayStr()) ? S.goal.n : 0; }
+
 /* ---------- 판정(고정 코드) ---------- */
 function norm(s) {
   return (s || "").toLowerCase()
@@ -140,16 +216,39 @@ function renderHome() {
 
   const gichul = DATA.filter(z => z.mode !== "review");
   const review = DATA.filter(z => z.mode === "review");
+  const qc = queueCounts();
+  const doneToday = goalToday();
+  const dueNow = qc.relearn + qc.review;
 
   $("#app").innerHTML = `
     <header class="masthead">
       <h1>암기PT</h1>
-      <p>임용 암기 트레이너 · 기출형 재풀이 + 단권화 키워드 인출</p>
+      <p>임용 암기 트레이너 · 오늘 할 만큼만, 매일</p>
     </header>
     ${needBackup ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
       ${staleDays !== null && staleDays > 0 ? `마지막 기록 ${staleDays}일 전. ` : ""}백업해 두세요.</span>
       <button class="btn" data-act="export">기록 내보내기</button></div>` : ""}
-    ${gichul.length ? `<h2 class="sec">기출 모드 <span>기출 프레임 그대로 문제 풀기</span></h2>` + gichul.map(quizCard).join("") : ""}
+    <section class="today-card">
+      <div class="tc-top">
+        <h2>오늘의 PT</h2>
+        <span class="tc-streak">${S.streakDays ? `🔥 ${S.streakDays}일 연속` : "오늘부터 시작"}</span>
+      </div>
+      <div class="tc-counts">
+        <span class="cnt c-fresh" title="아직 한 번도 안 본 카드">신규 <b>${qc.fresh}</b></span>
+        <span class="cnt c-relearn" title="몰랐다·부분이어서 오늘 다시 볼 카드">다시 <b>${qc.relearn}</b></span>
+        <span class="cnt c-review" title="완벽이었지만 간격이 돌아온 카드">복습 <b>${qc.review}</b></span>
+      </div>
+      <div class="tc-goal">
+        <div class="goal-bar"><div class="goal-fill" style="width:${Math.min(100, doneToday * 10)}%"></div></div>
+        <span class="goal-txt">미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " ✅" : ""}</span>
+      </div>
+      <div class="actions">
+        <button class="btn primary big" data-act="start-session"
+          ${qc.fresh + dueNow ? "" : "disabled"}>${qc.fresh + dueNow ? "오늘의 PT 시작" : "오늘 볼 카드 없음 🎉"}</button>
+        ${qc.chronic ? `<button class="btn" data-act="start-chronic">🔥 고질 약점만 (${qc.chronic})</button>` : ""}
+      </div>
+    </section>
+    ${gichul.length ? `<h2 class="sec">기출 모드 <span>기출 프레임 그대로, 문서형 전체 보기</span></h2>` + gichul.map(quizCard).join("") : ""}
     ${review.length ? `<h2 class="sec">복습 모드 <span>단권화 기반 키워드 인출·설명</span></h2>` + review.map(quizCard).join("") : ""}
     ${DATA.length ? "" : '<div class="empty">아직 퀴즈가 없어요. data/ 폴더에 퀴즈 파일을 추가하세요.</div>'}
     <div class="ai-box">
@@ -168,7 +267,38 @@ function renderHome() {
     </footer>`;
 }
 
-/* ---------- 퀴즈 페이지 ---------- */
+/* ---------- 소문항 블록 (목록·세션 공용) ---------- */
+function subBlockHtml(quiz, q, sub, qi, si) {
+  const id = subId(quiz, q, sub);
+  let inputHtml = "";
+  if (sub.type === "term") {
+    inputHtml = sub.parts.map((p, pi) => `
+      <div class="part-row"><span class="plabel">${esc(p.label)}</span>
+      <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만"></div>`).join("");
+  } else if (sub.type === "essay") {
+    inputHtml = `<textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}"></textarea>`;
+  }
+  const gradeBtns = sub.type === "self"
+    ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
+    : `<button class="btn primary" data-act="grade">채점하기</button>
+       <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
+  const ml = missLog(id);
+  const mlHtml = ml.length ? `<div class="miss-log">📌 누가기록, 이전에 놓친 포인트: ` +
+    ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
+    (ml.length > 6 ? " 외" : "") + `</div>` : "";
+  return `
+  <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}">
+    <div class="sub-head"><span class="sno">${esc(sub.no)}</span>
+      ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>
+    <div class="sub-prompt md">${md(sub.prompt)}</div>
+    ${mlHtml}
+    <div class="sub-input">${inputHtml}</div>
+    <div class="sub-actions">${gradeBtns}</div>
+    <div class="reveal"></div>
+  </div>`;
+}
+
+/* ---------- 퀴즈 페이지 (전체 보기) ---------- */
 function renderQuiz(quizId, weakOnly) {
   const quiz = DATA.find(z => z.id === quizId);
   if (!quiz) { location.hash = ""; return; }
@@ -179,36 +309,7 @@ function renderQuiz(quizId, weakOnly) {
       .filter(x => !weakOnly || isWeak(subId(quiz, q, x.sub)));
     if (!subs.length) return "";
 
-    const subsHtml = subs.map(({ sub, si }) => {
-      const id = subId(quiz, q, sub);
-      let inputHtml = "";
-      if (sub.type === "term") {
-        inputHtml = sub.parts.map((p, pi) => `
-          <div class="part-row"><span class="plabel">${esc(p.label)}</span>
-          <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만"></div>`).join("");
-      } else if (sub.type === "essay") {
-        inputHtml = `<textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}"></textarea>`;
-      }
-      const gradeBtns = sub.type === "self"
-        ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
-        : `<button class="btn primary" data-act="grade">채점하기</button>
-           <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
-      return `
-      <div class="sub" data-sid="${esc(id)}" data-q="${qi}" data-s="${si}">
-        <div class="sub-head"><span class="sno">${esc(sub.no)}</span>
-          ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>
-        <div class="sub-prompt md">${md(sub.prompt)}</div>
-        ${(() => {
-          const ml = missLog(id);
-          return ml.length ? `<div class="miss-log">📌 누가기록 — 이전에 놓친 포인트: ` +
-            ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
-            (ml.length > 6 ? " 외" : "") + `</div>` : "";
-        })()}
-        <div class="sub-input">${inputHtml}</div>
-        <div class="sub-actions">${gradeBtns}</div>
-        <div class="reveal"></div>
-      </div>`;
-    }).join("");
+    const subsHtml = subs.map(({ sub, si }) => subBlockHtml(quiz, q, sub, qi, si)).join("");
 
     return `
     <section class="q-card">
@@ -234,6 +335,72 @@ function renderQuiz(quizId, weakOnly) {
       <ul>${(quiz.rules || []).map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </details>
     ${qCards || '<div class="empty">다시 볼 소문항이 없어요. 전부 O!</div>'}`;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 오늘의 PT 세션 (10카드 라운드, Brainscape·Anki 패턴) ---------- */
+let SESSION = null;
+const ROUND = 10;
+
+function renderSession() {
+  if (!SESSION) SESSION = { queue: buildQueue("today"), idx: 0, round: [], results: { O: 0, T: 0, X: 0 } };
+  if (!SESSION.queue.length) { SESSION = null; location.hash = ""; return; }
+  if (SESSION.idx >= SESSION.queue.length) return renderCheckpoint(true);
+  if (SESSION.round.length >= ROUND) return renderCheckpoint(false);
+
+  const item = SESSION.queue[SESSION.idx];
+  const { quiz, q, sub, qi, si, st } = item;
+  const lastR = st && st.last ? st.last.r : null;
+  $("#app").innerHTML = `
+    <div class="topbar">
+      <a class="back" href="#" data-act="quit-session">✕ 종료</a>
+      <div class="sessbar"><div class="sessbar-fill" style="width:${SESSION.round.length / ROUND * 100}%"></div></div>
+      <span class="prog">${SESSION.round.length + 1}/${ROUND} · 남은 ${SESSION.queue.length - SESSION.idx}</span>
+    </div>
+    <section class="q-card sess-card${lastR ? " last-" + lastR : ""}">
+      <div class="sess-meta">
+        <span>${esc(quiz.subject)} · ${esc(q.frame)}</span>
+        ${st && st.chronic ? '<span class="chronic">🔥 고질 약점</span>' : ""}
+        ${lastR
+          ? `<span class="lastmark m-${lastR}">지난 판정 ${lastR === "T" ? "△" : lastR}</span>`
+          : '<span class="lastmark m-new">처음 보는 카드</span>'}
+      </div>
+      <div class="q-head"><span class="qno">${esc(q.title)}</span>
+        <span class="qpts">${esc(String(sub.no))}</span></div>
+      ${q.body ? `<details class="ctx"><summary>지문·자료 펼치기</summary><div class="q-body md">${md(q.body)}</div></details>` : ""}
+      ${subBlockHtml(quiz, q, sub, qi, si)}
+    </section>`;
+  window.scrollTo(0, 0);
+}
+
+function renderCheckpoint(finished) {
+  const r = SESSION.results;
+  const subs = allSubs();
+  const mastered = subs.filter(x => { const l = latest(x.id); return l && l.r === "O"; }).length;
+  const pct = subs.length ? Math.round(mastered / subs.length * 100) : 0;
+  const left = SESSION.queue.length - SESSION.idx;
+  const done = goalToday();
+  $("#app").innerHTML = `
+    <div class="checkpoint">
+      <h2>${finished ? "오늘 큐 완주! 🎉" : "라운드 완료"}</h2>
+      <div class="cp-counts">
+        <span class="cp cO">완벽 ${r.O}</span>
+        <span class="cp cT">부분 ${r.T}</span>
+        <span class="cp cX">몰랐다 ${r.X}</span>
+      </div>
+      <div class="cp-mastery">
+        <div class="cp-lbl">전체 마스터리 (최근 판정이 완벽인 비율)</div>
+        <div class="mastery-bar"><div class="mastery-fill" style="width:${pct}%"></div></div>
+        <div class="cp-pct">${pct}%</div>
+      </div>
+      <p class="cp-goal">${done >= 10
+        ? `오늘의 미니 골 달성 · 🔥 스트릭 ${S.streakDays || 1}일`
+        : `오늘 ${done}장 풀었어요. 미니 골까지 ${10 - done}장`}</p>
+      <div class="cp-actions">
+        ${finished ? "" : `<button class="btn primary big" data-act="next-round">다음 라운드 (남은 ${left}장)</button>`}
+        <button class="btn ghost" data-act="quit-session">오늘은 여기까지</button>
+      </div>
+    </div>`;
   window.scrollTo(0, 0);
 }
 
@@ -296,12 +463,8 @@ async function runAiJudge(subEl, topic, sub, input, literalFlags) {
 }
 
 /* ---------- 채점 → 제안 → 본인 확정 ---------- */
-function currentQuiz() {
-  const m = location.hash.match(/^#q\/([^/]+)/);
-  return m ? DATA.find(z => z.id === decodeURIComponent(m[1])) : null;
-}
 function findSub(el) {
-  const quiz = currentQuiz();
+  const quiz = DATA.find(z => z.id === el.dataset.quiz);
   const q = quiz.questions[+el.dataset.q];
   return { quiz, q, sub: q.subs[+el.dataset.s], id: el.dataset.sid };
 }
@@ -340,16 +503,19 @@ function showReveal(subEl, graded) {
       `<span class="kw" data-act="kw-toggle" data-name="${esc(nm)}">${esc(nm)}</span>`).join("") + "</div>";
   }
 
-  const chosen = null;
   subEl.querySelector(".reveal").innerHTML = `
     ${judgeHtml}
     <div class="model"><span class="lbl">모범답안</span><div class="md">${md(sub.answer)}</div></div>
     ${sub.note ? `<div class="note">${esc(sub.note)}</div>` : ""}
     <div class="verdict-row">
-      <span class="vlbl">내 판정${suggest ? ` (제안: ${vName(suggest)})` : ""} →</span>
-      ${["O", "T", "X"].map(v => `
-        <button class="vbtn ${v === suggest ? "suggest" : ""} ${v === chosen ? "chosen" : ""}"
-          data-act="verdict" data-v="${v}">${v === "T" ? "△" : v}</button>`).join("")}
+      <span class="vlbl">내 판정${suggest ? ` (제안: ${vName(suggest)})` : ""}</span>
+      <div class="vbtns">
+      ${[["X", "몰랐다"], ["T", "부분"], ["O", "완벽"]].map(([v, label]) => `
+        <button class="vbtn ${v === suggest ? "suggest" : ""}" data-act="verdict" data-v="${v}">
+          <span class="vname">${v === "T" ? "△" : v} ${label}</span>
+          <span class="ivl">${previewIvl(id, v)}</span>
+        </button>`).join("")}
+      </div>
       <span class="saved-msg"></span>
     </div>`;
   subEl.dataset.suggest = suggest || "";
@@ -370,6 +536,28 @@ function onAppClick(e) {
     return;
   }
   if (act === "import") { $("#importFile").click(); return; }
+  if (act === "start-session" || act === "start-chronic") {
+    SESSION = {
+      queue: buildQueue(act === "start-chronic" ? "chronic" : "today"),
+      idx: 0, round: [], results: { O: 0, T: 0, X: 0 }
+    };
+    if (!SESSION.queue.length) { SESSION = null; return; }
+    if (location.hash === "#today") renderSession();
+    else location.hash = "#today";
+    return;
+  }
+  if (act === "quit-session") {
+    SESSION = null;
+    if (location.hash && location.hash !== "#") location.hash = "";
+    else renderHome();
+    return;
+  }
+  if (act === "next-round") {
+    SESSION.round = [];
+    SESSION.results = { O: 0, T: 0, X: 0 };
+    renderSession();
+    return;
+  }
   if (act === "ai-onoff") {
     if (aiOn()) localStorage.setItem(AI_OFF_NAME, "1");
     else localStorage.removeItem(AI_OFF_NAME);
@@ -406,7 +594,7 @@ function onAppClick(e) {
   if (act === "grade") showReveal(subEl, true);
   if (act === "reveal") showReveal(subEl, false);
   if (act === "verdict") {
-    const { id } = findSub(subEl);
+    const { quiz, id } = findSub(subEl);
     const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
     record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
@@ -414,9 +602,21 @@ function onAppClick(e) {
     const head = subEl.querySelector(".sub-head");
     head.querySelector(".dots")?.remove();
     head.insertAdjacentHTML("beforeend", dotsHtml(id));
-    // 진행 표시 갱신
-    const quiz = currentQuiz();
-    if (quiz) {
+    // 세션 모드: 골 카운트 + 다음 카드로 자동 진행
+    if (SESSION && location.hash === "#today") {
+      if (!subEl.dataset.done) {
+        subEl.dataset.done = "1";
+        bumpGoal();
+        SESSION.results[btn.dataset.v]++;
+        SESSION.round.push(btn.dataset.v);
+        SESSION.idx++;
+        setTimeout(renderSession, 700);
+      }
+      return;
+    }
+    if (!subEl.dataset.done) { subEl.dataset.done = "1"; bumpGoal(); }
+    // 전체 보기 페이지: 진행 표시 갱신
+    if (/^#q\//.test(location.hash)) {
       const total = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
       const done = quiz.questions.reduce((a, q) =>
         a + q.subs.filter(sub => latest(subId(quiz, q, sub))).length, 0);
@@ -447,9 +647,10 @@ function onImportFile(e) {
 
 /* ---------- 라우터 ---------- */
 function render() {
+  if (location.hash === "#today") { renderSession(); return; }
   const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
   if (m) renderQuiz(decodeURIComponent(m[1]), !!m[2]);
-  else renderHome();
+  else { SESSION = null; renderHome(); }
 }
 window.addEventListener("hashchange", render);
 document.addEventListener("click", onAppClick);
