@@ -296,6 +296,37 @@ input.answer, textarea.answer {
 }
 input.answer:focus, textarea.answer:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 textarea.answer { resize: vertical; min-height: 74px; }
+/* 집중 인출: 다시 나온 카드는 놓친 포인트만 */
+.focus-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 0 4px; font-size: .82rem; color: var(--accent); font-weight: 700;
+}
+.focus-bar .ico { width: 14px; height: 14px; }
+.focus-bar .linkbtn {
+  margin-left: auto; border: 0; background: none; cursor: pointer;
+  color: var(--sub); font-size: .78rem; text-decoration: underline; padding: 2px;
+}
+.focus-cues {
+  margin: 0 0 8px; padding: 8px 12px; list-style: none;
+  border-left: 2px solid var(--accent); background: var(--accent-soft);
+  font-size: .88rem; color: var(--fg);
+}
+.focus-cues li { padding: 2px 0; }
+.focus-cues li::before { content: "· "; color: var(--sub); }
+
+/* 동기화 시트 */
+.sync-p { font-size: .84rem; color: var(--sub); margin: 12px 0 6px; }
+.sync-key { display: flex; align-items: center; gap: 8px; }
+.sync-key code {
+  flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--accent-soft); font-size: .8rem; word-break: break-all;
+}
+.sync-link { display: flex; gap: 8px; }
+.sync-link input {
+  flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--fg); font-size: .85rem;
+}
+
 .ta-wrap { position: relative; }
 .ta-wrap textarea.answer { padding-right: 48px; }
 .micbtn {

@@ -10,6 +10,79 @@ const AI_FN_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/amgipt-
 const AI_FN_KEY = "sb_publishable_0WY4_2tj6O83jVKgWW80rA_G-KIl3su";
 const DAY = 24 * 60 * 60 * 1000;
 
+/* ---------- 클라우드 동기화 ----------
+   기록이 브라우저에서 지워져도(캐시 삭제, iOS 정리) 안 날아가게 서버에 자동 백업.
+   기기마다 무작위 동기화 코드가 생기고, 그 코드가 곧 계정이다. 다른 기기에 코드를 넣으면 기록이 합쳐진다. */
+const SYNC_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/amgipt-sync";
+const SYNC_KEY_NAME = "dajigi_sync_key";
+let SYNC_STATE = "wait"; // wait | ok | fail
+let pushTimer = null;
+function syncKey() { return localStorage.getItem(SYNC_KEY_NAME) || ""; }
+function makeSyncKey() {
+  const a = new Uint8Array(18);
+  crypto.getRandomValues(a);
+  const k = "amgipt-" + [...a].map(b => "abcdefghjkmnpqrstuvwxyz23456789"[b % 31]).join("");
+  localStorage.setItem(SYNC_KEY_NAME, k);
+  return k;
+}
+async function syncCall(body) {
+  const res = await fetch(SYNC_URL, {
+    method: "POST", keepalive: true,
+    headers: { "content-type": "application/json", apikey: AI_FN_KEY, Authorization: "Bearer " + AI_FN_KEY },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+function schedulePush() {
+  if (!syncKey()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 2500);
+}
+async function pushNow() {
+  clearTimeout(pushTimer); pushTimer = null;
+  const k = syncKey();
+  if (!k) return;
+  try { await syncCall({ op: "push", key: k, data: S }); SYNC_STATE = "ok"; }
+  catch { SYNC_STATE = "fail"; }
+  updateSyncFoot();
+}
+function mergeRemote(remote) {
+  let added = 0;
+  for (const [k, arr] of Object.entries(remote.records || {})) {
+    const cur = S.records[k] || (S.records[k] = []);
+    for (const r of arr) if (!cur.some(c => c.t === r.t && c.r === r.r)) { cur.push(r); added++; }
+    cur.sort((a, b) => (a.t || 0) - (b.t || 0));
+  }
+  if (remote.lastExport && (!S.lastExport || remote.lastExport > S.lastExport)) S.lastExport = remote.lastExport;
+  if ((remote.streakDays || 0) > (S.streakDays || 0)) S.streakDays = remote.streakDays;
+  if (remote.lastGoalDate && (!S.lastGoalDate || remote.lastGoalDate > S.lastGoalDate)) S.lastGoalDate = remote.lastGoalDate;
+  if (remote.goal && remote.goal.d === todayStr() && (!S.goal || S.goal.d !== todayStr() || remote.goal.n > S.goal.n)) S.goal = remote.goal;
+  return added;
+}
+async function pullAndMerge() {
+  const k = syncKey();
+  if (!k) return;
+  try {
+    const r = await syncCall({ op: "pull", key: k });
+    if (r && r.data && r.data.records) { mergeRemote(r.data); persist(); }
+    SYNC_STATE = "ok";
+  } catch { SYNC_STATE = "fail"; }
+  if (!location.hash || location.hash === "#") renderHome(); else updateSyncFoot();
+  pushNow();
+}
+function syncFootText() {
+  const n = Object.values(S.records).reduce((a, h) => a + h.length, 0);
+  const st = SYNC_STATE === "ok" ? "클라우드에 자동 백업됨"
+    : SYNC_STATE === "fail" ? "클라우드 연결 안 됨, 이 브라우저에만 저장"
+    : "클라우드 동기화 중";
+  return `기록 ${n}건 · ${st}`;
+}
+function updateSyncFoot() {
+  const el = document.getElementById("syncfoot");
+  if (el) el.textContent = syncFootText();
+}
+
 /* ---------- 복습 모드: 단권화 데이터 → 퀴즈 구조로 변환 ----------
    각 항목 = 문항 1개 + 소문항 2개(키워드 인출 ver / 설명 쓰기 ver). 채점 키워드는 공유. */
 for (const set of (window.DAJIGI_DAN || [])) {
@@ -44,7 +117,7 @@ function loadStore() {
   return { records: {}, lastExport: null };
 }
 let S = loadStore();
-function persist() { localStorage.setItem(KEY, JSON.stringify(S)); }
+function persist() { localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(); }
 
 /* 마이그레이션: 복습 모드 소문항이 키워드/설명 2개에서 인출 1개로 통합됨. 기존 기록 병합 */
 (function migrateDanSubIds() {
@@ -398,7 +471,7 @@ function renderHome() {
       <h1>암기PT</h1>
       <p>임용 암기 트레이너</p>
     </header>
-    ${needBackup ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
+    ${needBackup && SYNC_STATE !== "ok" ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
       ${staleDays !== null && staleDays > 0 ? `마지막 기록 ${staleDays}일 전. ` : ""}백업해 두세요.</span>
       <button class="btn" data-act="export">기록 내보내기</button></div>` : ""}
     <div class="pt-bar">
@@ -421,25 +494,58 @@ function renderHome() {
     ${drawerHtml()}
     <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
     <footer class="home-foot">
-      <span>기록 ${recCount}건 · 이 브라우저에 저장됨</span>
+      <span id="syncfoot">${syncFootText()}</span>
       <span class="spacer"></span>
+      <button class="btn ghost" data-act="sync-sheet">동기화</button>
       <button class="btn ghost" data-act="export">내보내기</button>
       <button class="btn ghost" data-act="import">가져오기</button>
       <input type="file" id="importFile" accept="application/json" hidden>
     </footer>`;
 }
 
+/* ---------- 집중 인출: 다시 나온 카드는 놓친 포인트만 묻는다 ---------- */
+const FULL_OVERRIDE = new Set(); // "전체로 풀기"를 누른 소문항
+function focusGroupsFor(id, sub) {
+  if (!sub.groups || FULL_OVERRIDE.has(id)) return null;
+  const l = latest(id);
+  if (!l || l.r === "O" || !l.m || !l.m.length) return null;
+  const names = new Set(l.m);
+  const g = sub.groups.filter(x => names.has(x.name));
+  return g.length && g.length < sub.groups.length ? g : null;
+}
+function effGroups(subEl, sub) {
+  if (subEl.dataset.focus === "1") {
+    const g = focusGroupsFor(subEl.dataset.sid, sub);
+    if (g) return g;
+  }
+  return sub.groups;
+}
+
 /* ---------- 소문항 블록 (목록·세션 공용) ---------- */
 function subBlockHtml(quiz, q, sub, qi, si) {
   const id = subId(quiz, q, sub);
+  const fg = sub.type === "essay" ? focusGroupsFor(id, sub) : null;
+  let focusHtml = "";
+  if (fg) {
+    // 스포일러 방지: 이름에 "주제: 내용" 구조가 있으면 주제만 물음표로, 없으면 개수만
+    const named = fg.map(g => g.name.includes(":") ? g.name.split(":")[0].trim() + "?" : null).filter(Boolean);
+    const blind = fg.length - named.length;
+    focusHtml = `<div class="focus-bar">
+        <span>${ico("bolt")} 집중 인출 · 지난번 놓친 포인트 ${fg.length}개만 물어요</span>
+        <button class="linkbtn" data-act="full-sub">전체로 풀기</button>
+      </div>
+      <ul class="focus-cues">${named.map(c => `<li>${esc(c)}</li>`).join("")}
+        ${blind ? `<li>힌트 없이 인출할 포인트 ${blind}개</li>` : ""}</ul>`;
+  }
   let inputHtml = "";
   if (sub.type === "term") {
     inputHtml = sub.parts.map((p, pi) => `
       <div class="part-row"><span class="plabel">${esc(p.label)}</span>
       <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
   } else if (sub.type === "essay") {
+    const ph = fg ? "놓쳤던 포인트만 짧게" : (sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)");
     inputHtml = `<div class="ta-wrap">
-      <textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}">${esc(draftGet(id))}</textarea>
+      <textarea class="answer" placeholder="${esc(ph)}">${esc(draftGet(id))}</textarea>
       ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
     </div>`;
   }
@@ -448,12 +554,13 @@ function subBlockHtml(quiz, q, sub, qi, si) {
     : `<button class="btn primary" data-act="grade">채점하기</button>
        <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
   return `
-  <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}">
+  <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}"${fg ? ' data-focus="1"' : ""}>
     ${sub.hideHead
       ? (dotsHtml(id) ? `<div class="sub-head">${dotsHtml(id)}</div>` : "")
       : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
         ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
     ${sub.prompt ? `<div class="sub-prompt md">${md(sub.prompt)}</div>` : ""}
+    ${focusHtml}
     <div class="sub-input">${inputHtml}</div>
     <div class="sub-actions">${gradeBtns}</div>
     <div class="reveal"></div>
@@ -627,14 +734,14 @@ async function aiJudgeKeywords(topic, model, names, matched, input) {
   return data;
 }
 
-async function runAiJudge(subEl, topic, sub, input, literalFlags) {
+async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
   const missIdx = literalFlags.map((f, i) => (f ? -1 : i)).filter(i => i >= 0);
   const statusEl = () => subEl.querySelector(".ai-status");
   try {
     const data = await aiJudgeKeywords(
-      topic, sub.answer,
-      missIdx.map(i => sub.groups[i].name),
-      literalFlags.map((f, i) => f ? sub.groups[i].name : null).filter(Boolean),
+      topic, model,
+      missIdx.map(i => groups[i].name),
+      literalFlags.map((f, i) => f ? groups[i].name : null).filter(Boolean),
       input);
     const results = data.results || [];
     const flags = literalFlags.slice();
@@ -645,7 +752,7 @@ async function runAiJudge(subEl, topic, sub, input, literalFlags) {
       // 구버전 함수 호환: found(bool)만 있으면 good/missed로 해석
       const verdict = r.verdict || (r.found ? "good" : "missed");
       const chip = subEl.querySelector(`.kw[data-g="${gi}"]`);
-      const nm = sub.groups[gi].name;
+      const nm = groups[gi].name;
       if (verdict === "good") {
         flags[gi] = true;
         if (chip) {
@@ -709,20 +816,21 @@ function showReveal(subEl, graded) {
     }).join("") + "</div>";
   } else if (graded && sub.type === "essay") {
     const input = subEl.querySelector("textarea.answer").value;
-    const flags = judgeEssay(input, sub.groups);
+    const groups = effGroups(subEl, sub); // 집중 인출이면 놓쳤던 포인트만 채점
+    const flags = judgeEssay(input, groups);
     suggest = suggestFrom(flags);
-    judgeHtml = '<div class="kw-chips">' + sub.groups.map((g, i) =>
+    judgeHtml = '<div class="kw-chips">' + groups.map((g, i) =>
       `<span class="kw ${flags[i] ? "hit" : "miss"}" data-g="${i}" data-act="kw-toggle" data-name="${esc(g.name)}">${flags[i] ? "✓" : "✗"} ${esc(g.name)}</span>`).join("") + "</div>";
     if (aiOn() && norm(input) !== "" && flags.some(f => !f)) {
       judgeHtml += `<div class="ai-status">${ico("spark")} AI가 놓친 키워드의 의미 포함 여부를 판정하는 중…</div>`;
       const { q } = findSub(subEl);
-      setTimeout(() => runAiJudge(subEl, q.title, sub, input, flags), 0);
+      setTimeout(() => runAiJudge(subEl, q.title, sub.answer, groups, input, flags), 0);
     }
     judgeHtml += '<div class="kw-note">판정이 틀렸으면 칩을 탭해서 ✓↔✗로 고칠 수 있어요.</div>';
   } else if (sub.type === "essay" || sub.type === "term") {
     // 눈풀이: 중립 칩 — 몰랐던 포인트를 탭해서 ✗로 표시하면 누가기록에 쌓인다
     const names = sub.type === "essay"
-      ? sub.groups.map(g => g.name)
+      ? effGroups(subEl, sub).map(g => g.name)
       : sub.parts.map(p => p.label + ": " + p.accept[0]);
     judgeHtml = '<div class="kw-note">답을 보고, <b>몰랐던 포인트를 탭</b>해서 ✗로 표시하세요. 누가기록에 쌓여요.</div>' +
       '<div class="kw-chips">' + names.map(nm =>
@@ -764,6 +872,20 @@ function onAppClick(e) {
     return;
   }
   if (act === "import") { $("#importFile").click(); return; }
+  if (act === "sync-sheet") { openSyncSheet(); return; }
+  if (act === "copy-key") {
+    navigator.clipboard.writeText(syncKey()).then(() => { btn.textContent = "복사됨"; });
+    return;
+  }
+  if (act === "link-key") {
+    const v = document.getElementById("linkKey").value.trim();
+    if (v.length < 12) { alert("동기화 코드가 너무 짧아요."); return; }
+    localStorage.setItem(SYNC_KEY_NAME, v);
+    $(".sheeto")?.classList.remove("show");
+    SYNC_STATE = "wait"; updateSyncFoot();
+    pullAndMerge();
+    return;
+  }
   if (act === "start-session" || act === "start-chronic") {
     SESSION = {
       queue: buildQueue(act === "start-chronic" ? "chronic" : "today"),
@@ -829,6 +951,13 @@ function onAppClick(e) {
   if (!subEl) return;
 
   if (act === "mic") { toggleMic(subEl, btn); return; }
+  if (act === "full-sub") {
+    const { quiz, q, sub } = findSub(subEl);
+    FULL_OVERRIDE.add(subEl.dataset.sid);
+    stopMic();
+    subEl.outerHTML = subBlockHtml(quiz, q, sub, +subEl.dataset.q, +subEl.dataset.s);
+    return;
+  }
   if (act === "grade") { stopMic(); showReveal(subEl, true); }
   if (act === "reveal") { stopMic(); showReveal(subEl, false); }
   if (act === "verdict") {
@@ -864,6 +993,20 @@ function onAppClick(e) {
       const prog = $("#prog"); if (prog) prog.textContent = `기록 ${done}/${total}`;
     }
   }
+}
+
+function openSyncSheet() {
+  const o = $(".sheeto");
+  if (!o) return;
+  o.querySelector(".sheet").innerHTML = `
+    <div class="grab"></div>
+    <h3>클라우드 동기화<small>기록이 서버에 자동 백업돼요</small></h3>
+    <p class="sync-p">이 기기의 동기화 코드. 다른 기기의 암기PT에 이 코드를 넣으면 기록이 합쳐져요.</p>
+    <div class="sync-key"><code>${esc(syncKey())}</code><button class="btn" data-act="copy-key">복사</button></div>
+    <p class="sync-p">다른 기기의 코드로 연결하기</p>
+    <div class="sync-link"><input id="linkKey" placeholder="amgipt-..." autocomplete="off">
+      <button class="btn primary" data-act="link-key">연결</button></div>`;
+  o.classList.add("show");
 }
 
 function onImportFile(e) {
@@ -908,4 +1051,10 @@ document.addEventListener("input", e => {
   draftSet(key, t.value);
 });
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
+// 화면을 벗어날 때 밀린 백업을 바로 올린다
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && pushTimer) pushNow();
+});
 render();
+if (!syncKey()) makeSyncKey();
+pullAndMerge();
