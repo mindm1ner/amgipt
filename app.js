@@ -31,12 +31,12 @@ for (const set of (window.DAJIGI_DAN || [])) {
       body: "",
       subs: [
         { no: "키워드", points: 0, type: "essay",
-          prompt: "**" + it.title + "** — 핵심 키워드를 기억나는 대로 **전부** 쓰세요.",
+          prompt: "핵심 키워드를 기억나는 대로 **전부** 쓰세요.",
           ph: "키워드를 쉼표나 줄바꿈으로 나열해도 돼요",
           groups: it.groups, answer: it.model },
         { no: "설명", points: 0, type: "essay",
-          prompt: "**" + it.title + "** — 남에게 설명하듯 서술하세요.",
-          ph: "설명 안에 키워드가 자연스럽게 들어가야 득점이에요",
+          prompt: "남에게 설명하듯 서술하세요. 키워드가 자연스럽게 들어가야 득점이에요.",
+          ph: "아는 만큼 서술해 보세요",
           groups: it.groups, answer: it.model }
       ]
     }))
@@ -176,6 +176,18 @@ function suggestFrom(flags) {
 
 /* ---------- 유틸 ---------- */
 const $ = sel => document.querySelector(sel);
+/* 단색 스트로크 아이콘 (이모지 대신) */
+const ICONS = {
+  doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>',
+  recall: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/>',
+  bolt: '<polygon points="13 2 3 14 11 14 10 22 21 9 13 9 13 2" fill="currentColor" stroke="none"/>',
+  pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
+  spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="currentColor" stroke="none"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9"/>'
+};
+function ico(name) {
+  return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
 function md(text) { return marked.parse(text || "", { gfm: true, breaks: true }); }
 function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function vName(v) { return v === "O" ? "O 맞음" : v === "T" ? "△ 부분" : "X 틀림"; }
@@ -219,7 +231,7 @@ function openRangeSheet(name) {
     const isReview = quiz.mode === "review";
     return `
     <div class="mode-row">
-      <div class="m-icon">${isReview ? "🧠" : "📝"}</div>
+      <div class="m-icon">${isReview ? ico("recall") : ico("doc")}</div>
       <div class="m-main">
         <div class="m-name">${isReview ? "복습 모드" : "기출 모드"}</div>
         <div class="m-desc">${isReview
@@ -260,7 +272,7 @@ function renderHome() {
     <section class="today-card">
       <div class="tc-top">
         <h2>오늘의 PT</h2>
-        <span class="tc-streak">${S.streakDays ? `🔥 ${S.streakDays}일 연속` : "오늘부터 시작"}</span>
+        <span class="tc-streak">${S.streakDays ? `${ico("bolt")} ${S.streakDays}일 연속` : "오늘부터 시작"}</span>
       </div>
       <div class="tc-counts">
         <span class="cnt c-fresh" title="아직 한 번도 안 본 카드">신규 <b>${qc.fresh}</b></span>
@@ -269,12 +281,12 @@ function renderHome() {
       </div>
       <div class="tc-goal">
         <div class="goal-bar"><div class="goal-fill" style="width:${Math.min(100, doneToday * 10)}%"></div></div>
-        <span class="goal-txt">미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " ✅" : ""}</span>
+        <span class="goal-txt">미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " 달성" : ""}</span>
       </div>
       <div class="actions">
         <button class="btn primary big" data-act="start-session"
-          ${qc.fresh + dueNow ? "" : "disabled"}>${qc.fresh + dueNow ? "오늘의 PT 시작" : "오늘 볼 카드 없음 🎉"}</button>
-        ${qc.chronic ? `<button class="btn" data-act="start-chronic">🔥 고질 약점만 (${qc.chronic})</button>` : ""}
+          ${qc.fresh + dueNow ? "" : "disabled"}>${qc.fresh + dueNow ? "오늘의 PT 시작" : "오늘 볼 카드를 모두 끝냈어요"}</button>
+        ${qc.chronic ? `<button class="btn" data-act="start-chronic">${ico("bolt")} 고질 약점만 (${qc.chronic})</button>` : ""}
       </div>
     </section>
     <h2 class="sec">범위 <span>누르면 기출·복습 모드를 골라요</span></h2>
@@ -294,8 +306,8 @@ function renderHome() {
     <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
     <div class="ai-box">
       <div class="ai-row">
-        <span>🤖 AI 의미 판정: <b class="${aiOn() ? "on" : ""}">${aiOn() ? "켜짐" : "꺼짐"}</b>
-          <span class="ai-hint">— 표기가 달라도 의미가 같은 키워드를 인정 (온고지신 서버 사용, 키 불필요)</span></span>
+        <span>${ico("spark")} AI 의미 판정: <b class="${aiOn() ? "on" : ""}">${aiOn() ? "켜짐" : "꺼짐"}</b>
+          <span class="ai-hint">표기가 달라도 의미가 같은 키워드를 인정해요. 온고지신 서버라 키가 필요 없어요</span></span>
         <button class="btn ghost" data-act="ai-onoff">${aiOn() ? "끄기" : "켜기"}</button>
       </div>
     </div>
@@ -324,7 +336,7 @@ function subBlockHtml(quiz, q, sub, qi, si) {
     : `<button class="btn primary" data-act="grade">채점하기</button>
        <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
   const ml = missLog(id);
-  const mlHtml = ml.length ? `<div class="miss-log">📌 누가기록, 이전에 놓친 포인트: ` +
+  const mlHtml = ml.length ? `<div class="miss-log">${ico("pin")} 누가기록, 이전에 놓친 포인트: ` +
     ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
     (ml.length > 6 ? " 외" : "") + `</div>` : "";
   return `
@@ -401,7 +413,7 @@ function renderSession() {
     <section class="q-card sess-card${lastR ? " last-" + lastR : ""}">
       <div class="sess-meta">
         <span>${esc(quiz.subject)} · ${esc(q.frame)}</span>
-        ${st && st.chronic ? '<span class="chronic">🔥 고질 약점</span>' : ""}
+        ${st && st.chronic ? `<span class="chronic">${ico("bolt")} 고질 약점</span>` : ""}
         ${lastR
           ? `<span class="lastmark m-${lastR}">지난 판정 ${lastR === "T" ? "△" : lastR}</span>`
           : '<span class="lastmark m-new">처음 보는 카드</span>'}
@@ -423,7 +435,7 @@ function renderCheckpoint(finished) {
   const done = goalToday();
   $("#app").innerHTML = `
     <div class="checkpoint">
-      <h2>${finished ? "오늘 큐 완주! 🎉" : "라운드 완료"}</h2>
+      <h2>${finished ? `${ico("check")} 오늘 큐 완주!` : "라운드 완료"}</h2>
       <div class="cp-counts">
         <span class="cp cO">완벽 ${r.O}</span>
         <span class="cp cT">부분 ${r.T}</span>
@@ -435,7 +447,7 @@ function renderCheckpoint(finished) {
         <div class="cp-pct">${pct}%</div>
       </div>
       <p class="cp-goal">${done >= 10
-        ? `오늘의 미니 골 달성 · 🔥 스트릭 ${S.streakDays || 1}일`
+        ? `오늘의 미니 골 달성 · 스트릭 ${S.streakDays || 1}일`
         : `오늘 ${done}장 풀었어요. 미니 골까지 ${10 - done}장`}</p>
       <div class="cp-actions">
         ${finished ? "" : `<button class="btn primary big" data-act="next-round">다음 라운드 (남은 ${left}장)</button>`}
@@ -462,7 +474,7 @@ async function aiJudgeKeywords(topic, model, names, input) {
   if (!res.ok) throw new Error("HTTP " + res.status);
   let data;
   try { data = JSON.parse(text); }
-  catch { throw new Error("서버 함수에 채점 기능이 아직 없어요 — 엣지 함수 재배포 필요"); }
+  catch { throw new Error("서버 함수에 채점 기능이 아직 없어요. 엣지 함수 재배포 필요"); }
   if (data.error) throw new Error(String(data.error).slice(0, 80));
   return data.results || [];
 }
@@ -488,7 +500,7 @@ async function runAiJudge(subEl, topic, sub, input, literalFlags) {
       }
     });
     const s = statusEl();
-    if (s) s.textContent = "🤖 AI 판정 완료 — 표기가 달라도 의미가 같으면 (의미)로 인정했어요. 칩에 마우스를 올리면 근거가 보여요.";
+    if (s) s.innerHTML = ico("spark") + " AI 판정 완료. 표기가 달라도 의미가 같으면 (의미)로 인정했어요. 칩을 누르면 근거가 보여요.";
     if (!subEl.querySelector(".vbtn.chosen")) {
       const newSuggest = suggestFrom(flags);
       subEl.dataset.suggest = newSuggest || "";
@@ -499,7 +511,7 @@ async function runAiJudge(subEl, topic, sub, input, literalFlags) {
     }
   } catch (e) {
     const s = statusEl();
-    if (s) s.textContent = "⚠️ AI 채점 실패(" + (e && e.message ? e.message : "오류") + ") — 문자 일치 판정만 반영했어요.";
+    if (s) s.textContent = "AI 채점 실패(" + (e && e.message ? e.message : "오류") + "). 문자 일치 판정만 반영했어요.";
   }
 }
 
@@ -529,7 +541,7 @@ function showReveal(subEl, graded) {
     judgeHtml = '<div class="kw-chips">' + sub.groups.map((g, i) =>
       `<span class="kw ${flags[i] ? "hit" : "miss"}" data-g="${i}" data-act="kw-toggle" data-name="${esc(g.name)}">${flags[i] ? "✓" : "✗"} ${esc(g.name)}</span>`).join("") + "</div>";
     if (aiOn() && norm(input) !== "" && flags.some(f => !f)) {
-      judgeHtml += '<div class="ai-status">🤖 AI가 놓친 키워드의 의미 포함 여부를 판정하는 중…</div>';
+      judgeHtml += `<div class="ai-status">${ico("spark")} AI가 놓친 키워드의 의미 포함 여부를 판정하는 중…</div>`;
       const { q } = findSub(subEl);
       setTimeout(() => runAiJudge(subEl, q.title, sub, input, flags), 0);
     }
@@ -539,7 +551,7 @@ function showReveal(subEl, graded) {
     const names = sub.type === "essay"
       ? sub.groups.map(g => g.name)
       : sub.parts.map(p => p.label + ": " + p.accept[0]);
-    judgeHtml = '<div class="kw-note">답을 보고, <b>몰랐던 포인트를 탭</b>해서 ✗로 표시하세요 — 누가기록에 쌓여요.</div>' +
+    judgeHtml = '<div class="kw-note">답을 보고, <b>몰랐던 포인트를 탭</b>해서 ✗로 표시하세요. 누가기록에 쌓여요.</div>' +
       '<div class="kw-chips">' + names.map(nm =>
       `<span class="kw" data-act="kw-toggle" data-name="${esc(nm)}">${esc(nm)}</span>`).join("") + "</div>";
   }
