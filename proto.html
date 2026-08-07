@@ -3,21 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>암기PT 홈 개편 프로토타입 · 과목별 서재</title>
+<title>암기PT 홈 프로토타입 · 서랍</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
 <link rel="stylesheet" href="app.css">
 <style>
-/* ---------- 프로토타입 전용 ---------- */
 .proto-note {
   background: var(--warn-bg); border: 1px solid var(--warnb); border-radius: 12px;
   padding: 10px 14px; margin-bottom: 20px; font-size: .82rem; color: var(--warn);
 }
 .proto-sec {
   font-size: .78rem; font-weight: 700; letter-spacing: .12em; color: var(--faint);
-  margin: 34px 0 12px; text-transform: uppercase;
+  margin: 34px 0 12px;
 }
 
-/* 오늘의 PT: 전체 수치 대신 "오늘 분량"만 보여주는 컴팩트 바 */
+/* 오늘의 PT 컴팩트 바 */
 .pt-bar {
   display: flex; align-items: center; gap: 14px;
   background: var(--accent); color: var(--bg);
@@ -29,110 +28,67 @@
 .pt-bar .btn { background: var(--bg); border-color: var(--bg); color: var(--ink); font-weight: 700; border-radius: 999px; padding: 9px 20px; }
 .pt-sub {
   display: flex; gap: 14px; align-items: center;
-  font-size: .76rem; color: var(--faint); padding: 0 8px; margin-bottom: 6px;
+  font-size: .76rem; color: var(--faint); padding: 0 8px; margin-bottom: 26px;
 }
 .pt-sub .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .pt-sub .fill { height: 100%; width: 30%; background: var(--accent); border-radius: 999px; }
 
-/* v2: 과목 = 파일 폴더. 누르면 영역이 펼쳐진다 */
-.folders { display: grid; gap: 18px; }
-.folder { cursor: pointer; }
-.ftab {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--card); border: 1px solid var(--line); border-bottom: none;
-  border-radius: 10px 10px 0 0; padding: 6px 18px 5px;
-  font-family: "HsSummerWaterLight", "87MM일상", serif;
-  font-size: 1.1rem; letter-spacing: .05em;
-  position: relative; top: 1px; margin-left: 14px;
+/* ---------- 서랍 (파일 캐비닛) ---------- */
+.drawer { padding-top: 26px; }
+.file { position: relative; margin: -13px auto 0; height: 46px; }
+.file .fbody {
+  position: absolute; left: 0; right: 0; top: 13px; bottom: 0;
+  border: 1.5px solid var(--ink); border-bottom: none;
+  border-radius: 12px 12px 0 0; background: var(--bg);
 }
-.ftab .n { font-family: "87MM일상", sans-serif; font-size: .72rem; color: var(--faint); font-weight: 700; }
-.fbody {
-  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  box-shadow: var(--shadow); padding: 14px 16px;
+.file .ftab {
+  position: absolute; top: 0; height: 16px; min-width: 130px;
+  border: 1.5px solid var(--ink); border-bottom: none;
+  border-radius: 9px 9px 0 0; background: var(--bg);
+  display: flex; align-items: center; gap: 16px; justify-content: space-between;
+  padding: 12px 16px 6px; font-size: .84rem; z-index: 2;
+  cursor: pointer; transition: transform .15s;
 }
-.fsummary { display: flex; align-items: center; gap: 12px; font-size: .82rem; color: var(--sub); }
-.fsummary .today-n { font-weight: 700; color: var(--ink); }
-.fsummary .chev { margin-left: auto; color: var(--faint); font-size: 18px; transition: transform .2s; }
-.folder.open .fsummary .chev { transform: rotate(90deg); }
-.fareas { display: none; margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 12px; }
-.folder.open .fareas { display: grid; gap: 8px; }
-.area {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
-  padding: 13px 15px; font: inherit; color: var(--ink); cursor: pointer;
-  transition: border-color .15s, transform .08s;
+.file .ftab:hover { transform: translateY(-4px); }
+.file .ftab .num { color: var(--sub); font-weight: 600; font-size: .76rem; }
+.file .ftab .nm { font-weight: 700; white-space: nowrap; }
+.file.subject .ftab {
+  background: var(--ink); color: var(--bg); border-color: var(--ink);
+  font-family: "HsSummerWaterLight", "87MM일상", serif; letter-spacing: .06em;
 }
-.area:hover { border-color: var(--sub); }
-.area:active { transform: scale(.99); }
-.area .a-title { font-weight: 700; font-size: .95rem; }
-.area .a-meta { font-size: .74rem; color: var(--sub); margin-top: 2px; display: flex; gap: 8px; }
-.area .a-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.area .b-weak { font-size: .72rem; color: var(--no); font-weight: 700; }
-.area .chev { color: var(--faint); font-size: 17px; }
-
-/* v1 참고용: 책장 스타일 유지 */
-/* 서재: 과목 = 책장 한 칸, 범위 = 책 */
-.shelf { margin-bottom: 26px; }
-.shelf-head {
-  display: flex; align-items: baseline; gap: 10px;
-  padding: 4px 6px 10px;
+.file.subject .ftab .num { color: var(--bg); opacity: .7; font-family: "87MM일상", sans-serif; }
+.file.blank { pointer-events: none; }
+.file.area.hide { display: none; }
+.file .weak {
+  position: absolute; right: 14px; top: 20px; z-index: 2;
+  font-size: .7rem; color: var(--no); font-weight: 700;
 }
-.shelf-head .subj {
-  font-family: "HsSummerWaterLight", "87MM일상", serif;
-  font-size: 1.35rem; letter-spacing: .06em;
+/* 서랍 앞판 */
+.drawer-front { position: relative; margin-top: -1px; }
+.drawer-front .panel {
+  height: 64px; border: 1.5px solid var(--ink); border-radius: 4px 4px 10px 10px;
+  background: var(--bg);
+  transform: perspective(300px) rotateX(-14deg); transform-origin: top;
 }
-.shelf-head .meta { font-size: .76rem; color: var(--faint); }
-.shelf-head .today-n { margin-left: auto; font-size: .76rem; color: var(--sub); font-weight: 700; }
-.books { display: grid; gap: 10px; }
-.book {
-  display: flex; align-items: stretch; text-align: left; cursor: pointer;
-  background: var(--card); border: 1px solid var(--line); border-radius: 6px 14px 14px 6px;
-  box-shadow: var(--shadow); overflow: hidden; padding: 0;
-  font: inherit; color: var(--ink);
-  transition: transform .1s, border-color .15s;
-}
-.book:hover { border-color: var(--sub); transform: translateY(-1px); }
-.book .spine {
-  flex: 0 0 10px; background: var(--accent);
-  border-right: 1px solid var(--line);
-}
-.book .spine.thin { background: var(--sub); }
-.book .b-main { flex: 1; padding: 14px 16px; min-width: 0; }
-.book .b-title { font-weight: 700; font-size: .98rem; }
-.book .b-meta { font-size: .76rem; color: var(--sub); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.mode-tag {
-  font-size: .7rem; font-weight: 700; padding: 1px 8px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--sub);
-}
-.b-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 14px; }
-.b-mastery { display: flex; gap: 3px; }
-.b-mastery i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
-.b-mastery i.on { background: var(--accent); }
-.b-weak { font-size: .72rem; color: var(--no); font-weight: 700; white-space: nowrap; }
-.book .chev { align-self: center; padding-right: 12px; color: var(--faint); font-size: 18px; }
-/* 책장 선반 */
-.shelf-board {
-  height: 5px; margin: 12px 2px 0; border-radius: 3px;
-  background: var(--line);
-  box-shadow: 0 3px 6px -3px rgba(0,0,0,.18);
+.drawer-front .label {
+  position: absolute; left: 50%; top: 26px; transform: translateX(-50%);
+  background: var(--hl); border: 1.5px solid var(--ink); border-radius: 6px;
+  padding: 3px 16px; font-size: .82rem; font-weight: 700; white-space: nowrap;
 }
 
-/* 학습 카드 미리보기 (문구 제거 버전) */
-.mock-sheet { position: static; display: flex; background: none; margin-top: 8px; }
-.mock-sheet .sheet { border-radius: 20px; box-shadow: var(--shadow); border: 1px solid var(--line); animation: none; }
-.footnote { font-size: .78rem; color: var(--faint); margin-top: 10px; }
+/* 학습 카드 미리보기 */
+.footnote { font-size: .78rem; color: var(--faint); margin-top: 12px; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div class="proto-note">홈 개편 프로토타입이에요. 실제 앱은 아직 그대로예요. 이 방향이 맞으면 "컨펌"이라고 알려주세요.</div>
+  <div class="proto-note">서랍 프로토타입이에요. 실제 앱은 아직 그대로예요. 과목 탭(검정)을 눌러 여닫아 보세요. 맞으면 "컨펌"이라고 알려주세요.</div>
 
   <header class="masthead">
     <h1>암기PT</h1>
     <p>임용 암기 트레이너</p>
   </header>
 
-  <!-- ① 오늘의 PT: 전체 86장 대신 "오늘 분량"만 -->
   <div class="pt-bar">
     <span class="t">오늘의 PT</span>
     <span class="d">12장 · 다시 3 · 복습 4 · 신규 5</span>
@@ -144,113 +100,13 @@
     <span>스트릭 4일</span>
   </div>
 
-  <!-- ② v2: 과목 = 파일 폴더, 누르면 영역이 펼쳐짐 -->
-  <div class="proto-sec">과목 폴더 (v2 · 설명해 주신 인터랙션)</div>
-  <div class="folders">
-    <div class="folder open" onclick="this.classList.toggle('open')">
-      <div class="ftab">사회 <span class="n">영역 1</span></div>
-      <div class="fbody">
-        <div class="fsummary"><span>마스터리 12%</span><span class="today-n">오늘 5장</span><span class="chev">›</span></div>
-        <div class="fareas">
-          <button class="area" onclick="event.stopPropagation()">
-            <span>
-              <span class="a-title">한국사 선사~고려</span>
-              <span class="a-meta"><span class="mode-tag">기출 31</span><span class="mode-tag">복습 21</span></span>
-            </span>
-            <span class="a-right">
-              <span class="b-weak">다시 볼 것 3</span>
-            </span>
-            <span class="chev">›</span>
-          </button>
-        </div>
-      </div>
-    </div>
-    <div class="folder" onclick="this.classList.toggle('open')">
-      <div class="ftab">국어 <span class="n">영역 2</span></div>
-      <div class="fbody">
-        <div class="fsummary"><span>마스터리 4%</span><span class="today-n">오늘 7장</span><span class="chev">›</span></div>
-        <div class="fareas">
-          <button class="area" onclick="event.stopPropagation()">
-            <span>
-              <span class="a-title">각론 읽기</span>
-              <span class="a-meta"><span class="mode-tag">복습 17</span></span>
-            </span>
-            <span class="chev">›</span>
-          </button>
-          <button class="area" onclick="event.stopPropagation()">
-            <span>
-              <span class="a-title">각론 쓰기</span>
-              <span class="a-meta"><span class="mode-tag">복습 17</span></span>
-            </span>
-            <span class="chev">›</span>
-          </button>
-        </div>
-      </div>
-    </div>
+  <div class="drawer" id="drawer"></div>
+  <div class="drawer-front">
+    <div class="panel"></div>
+    <div class="label">채영의 임용 서랍</div>
   </div>
-  <p class="footnote">과목 폴더를 누르면 영역이 펼쳐지고, 영역을 누르면 기출·복습 선택(모드가 하나면 바로 진행). 사회 폴더는 열린 상태, 국어는 닫힌 상태 예시예요. 눌러서 열고 닫아볼 수 있어요.</p>
+  <p class="footnote">검정 탭=과목(누르면 영역이 펼쳐지고 다시 누르면 접힘), 흰 탭=영역(카드 수와 함께 표시, 누르면 기출·복습 선택 또는 바로 진행). 탭 위치는 좌·중·우로 번갈아 꽂혀요. 새 과목을 이관하면 서랍에 파일이 늘어나요.</p>
 
-  <!-- v1 참고용: 책장 스타일 -->
-  <div class="proto-sec">참고 · v1 책장 스타일</div>
-
-  <div class="shelf">
-    <div class="shelf-head">
-      <span class="subj">사회</span>
-      <span class="meta">범위 1 · 마스터리 12%</span>
-      <span class="today-n">오늘 5장</span>
-    </div>
-    <div class="books">
-      <button class="book">
-        <span class="spine"></span>
-        <span class="b-main">
-          <span class="b-title">한국사 선사~고려</span>
-          <span class="b-meta"><span class="mode-tag">기출 31</span><span class="mode-tag">복습 21</span><span>풀어봄 9</span></span>
-        </span>
-        <span class="b-right">
-          <span class="b-mastery"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></span>
-          <span class="b-weak">다시 볼 것 3</span>
-        </span>
-        <span class="chev">›</span>
-      </button>
-    </div>
-    <div class="shelf-board"></div>
-  </div>
-
-  <div class="shelf">
-    <div class="shelf-head">
-      <span class="subj">국어</span>
-      <span class="meta">범위 2 · 마스터리 4%</span>
-      <span class="today-n">오늘 7장</span>
-    </div>
-    <div class="books">
-      <button class="book">
-        <span class="spine thin"></span>
-        <span class="b-main">
-          <span class="b-title">각론 읽기</span>
-          <span class="b-meta"><span class="mode-tag">복습 17</span><span>풀어봄 2</span></span>
-        </span>
-        <span class="b-right">
-          <span class="b-mastery"><i class="on"></i><i></i><i></i><i></i><i></i></span>
-        </span>
-        <span class="chev">›</span>
-      </button>
-      <button class="book">
-        <span class="spine thin"></span>
-        <span class="b-main">
-          <span class="b-title">각론 쓰기</span>
-          <span class="b-meta"><span class="mode-tag">복습 17</span><span>풀어봄 0</span></span>
-        </span>
-        <span class="b-right">
-          <span class="b-mastery"><i></i><i></i><i></i><i></i><i></i></span>
-        </span>
-        <span class="chev">›</span>
-      </button>
-    </div>
-    <div class="shelf-board"></div>
-  </div>
-  <p class="footnote">책을 누르면 지금처럼 기출·복습 모드 선택 시트가 떠요. 책등 색은 기출이 있는 범위=진하게, 복습만=연하게.</p>
-
-  <!-- ③ 학습 카드: 반복 문구·답안 규칙 제거 버전 -->
   <div class="proto-sec">학습 카드 (문구 정리 버전)</div>
   <section class="q-card sess-card last-T">
     <div class="sess-meta">
@@ -268,7 +124,50 @@
       </div>
     </div>
   </section>
-  <p class="footnote">바뀐 점: "인출 / 아는 만큼 인출해 보세요..." 반복 문구 삭제(placeholder 한 줄로), 답안 규칙 접이 박스 삭제, 소문항 라벨도 삭제(카드=문제 하나).</p>
+  <p class="footnote">바뀐 점: 카드마다 반복되던 "인출 / 아는 만큼 인출해 보세요..." 문구와 답안 규칙 접이 박스를 뺐어요. placeholder 한 줄만 남아요.</p>
 </div>
+
+<script>
+/* 서랍 렌더: 과목(검정 탭) + 영역(흰 탭) 파일 스택. 원근감은 위로 갈수록 폭 축소 */
+const FILES = [
+  { type: "subject", key: "사회", name: "사회", num: "052", open: false },
+  { type: "area", sub: "사회", name: "한국사 선사~고려", num: "52", weak: 3 },
+  { type: "subject", key: "국어", name: "국어", num: "034", open: true },
+  { type: "area", sub: "국어", name: "각론 읽기", num: "17" },
+  { type: "area", sub: "국어", name: "각론 쓰기", num: "17" },
+];
+const state = { 사회: false, 국어: true };
+const TABPOS = ["16%", "44%", "72%"];
+
+function renderDrawer() {
+  const visible = [];
+  visible.push({ type: "blank" }, { type: "blank" }, { type: "blank" });
+  for (const f of FILES) {
+    if (f.type === "area" && !state[f.sub]) continue;
+    visible.push(f);
+  }
+  const n = visible.length;
+  const el = document.getElementById("drawer");
+  el.innerHTML = visible.map((f, i) => {
+    const depth = n - 1 - i;                     // 위(뒤)일수록 큼
+    const width = 100 - depth * 2.6;             // 원근: 뒤로 갈수록 좁게
+    const pos = TABPOS[i % 3];
+    if (f.type === "blank")
+      return `<div class="file blank" style="width:${width}%"><div class="fbody"></div></div>`;
+    const cls = f.type === "subject" ? "subject" : "area";
+    const act = f.type === "subject" ? `onclick="toggleSub('${f.key}')"` : `onclick="alert('영역 선택: 기출·복습 시트가 뜨는 자리예요')"`;
+    return `
+    <div class="file ${cls}" style="width:${width}%">
+      <div class="fbody"></div>
+      <div class="ftab" style="left:${pos}" ${act}>
+        <span class="num">${f.num}</span><span class="nm">${f.name}</span>
+      </div>
+      ${f.weak ? `<span class="weak">다시 볼 것 ${f.weak}</span>` : ""}
+    </div>`;
+  }).join("");
+}
+function toggleSub(k) { state[k] = !state[k]; renderDrawer(); }
+renderDrawer();
+</script>
 </body>
 </html>
