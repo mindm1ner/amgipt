@@ -34,6 +34,43 @@
 .pt-sub .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .pt-sub .fill { height: 100%; width: 30%; background: var(--accent); border-radius: 999px; }
 
+/* v2: 과목 = 파일 폴더. 누르면 영역이 펼쳐진다 */
+.folders { display: grid; gap: 18px; }
+.folder { cursor: pointer; }
+.ftab {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--line); border-bottom: none;
+  border-radius: 10px 10px 0 0; padding: 6px 18px 5px;
+  font-family: "HsSummerWaterLight", "87MM일상", serif;
+  font-size: 1.1rem; letter-spacing: .05em;
+  position: relative; top: 1px; margin-left: 14px;
+}
+.ftab .n { font-family: "87MM일상", sans-serif; font-size: .72rem; color: var(--faint); font-weight: 700; }
+.fbody {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 14px 16px;
+}
+.fsummary { display: flex; align-items: center; gap: 12px; font-size: .82rem; color: var(--sub); }
+.fsummary .today-n { font-weight: 700; color: var(--ink); }
+.fsummary .chev { margin-left: auto; color: var(--faint); font-size: 18px; transition: transform .2s; }
+.folder.open .fsummary .chev { transform: rotate(90deg); }
+.fareas { display: none; margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 12px; }
+.folder.open .fareas { display: grid; gap: 8px; }
+.area {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 15px; font: inherit; color: var(--ink); cursor: pointer;
+  transition: border-color .15s, transform .08s;
+}
+.area:hover { border-color: var(--sub); }
+.area:active { transform: scale(.99); }
+.area .a-title { font-weight: 700; font-size: .95rem; }
+.area .a-meta { font-size: .74rem; color: var(--sub); margin-top: 2px; display: flex; gap: 8px; }
+.area .a-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.area .b-weak { font-size: .72rem; color: var(--no); font-weight: 700; }
+.area .chev { color: var(--faint); font-size: 17px; }
+
+/* v1 참고용: 책장 스타일 유지 */
 /* 서재: 과목 = 책장 한 칸, 범위 = 책 */
 .shelf { margin-bottom: 26px; }
 .shelf-head {
@@ -107,8 +144,54 @@
     <span>스트릭 4일</span>
   </div>
 
-  <!-- ② 서재: 과목 = 책장, 범위 = 책 -->
-  <div class="proto-sec">서재</div>
+  <!-- ② v2: 과목 = 파일 폴더, 누르면 영역이 펼쳐짐 -->
+  <div class="proto-sec">과목 폴더 (v2 · 설명해 주신 인터랙션)</div>
+  <div class="folders">
+    <div class="folder open" onclick="this.classList.toggle('open')">
+      <div class="ftab">사회 <span class="n">영역 1</span></div>
+      <div class="fbody">
+        <div class="fsummary"><span>마스터리 12%</span><span class="today-n">오늘 5장</span><span class="chev">›</span></div>
+        <div class="fareas">
+          <button class="area" onclick="event.stopPropagation()">
+            <span>
+              <span class="a-title">한국사 선사~고려</span>
+              <span class="a-meta"><span class="mode-tag">기출 31</span><span class="mode-tag">복습 21</span></span>
+            </span>
+            <span class="a-right">
+              <span class="b-weak">다시 볼 것 3</span>
+            </span>
+            <span class="chev">›</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="folder" onclick="this.classList.toggle('open')">
+      <div class="ftab">국어 <span class="n">영역 2</span></div>
+      <div class="fbody">
+        <div class="fsummary"><span>마스터리 4%</span><span class="today-n">오늘 7장</span><span class="chev">›</span></div>
+        <div class="fareas">
+          <button class="area" onclick="event.stopPropagation()">
+            <span>
+              <span class="a-title">각론 읽기</span>
+              <span class="a-meta"><span class="mode-tag">복습 17</span></span>
+            </span>
+            <span class="chev">›</span>
+          </button>
+          <button class="area" onclick="event.stopPropagation()">
+            <span>
+              <span class="a-title">각론 쓰기</span>
+              <span class="a-meta"><span class="mode-tag">복습 17</span></span>
+            </span>
+            <span class="chev">›</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="footnote">과목 폴더를 누르면 영역이 펼쳐지고, 영역을 누르면 기출·복습 선택(모드가 하나면 바로 진행). 사회 폴더는 열린 상태, 국어는 닫힌 상태 예시예요. 눌러서 열고 닫아볼 수 있어요.</p>
+
+  <!-- v1 참고용: 책장 스타일 -->
+  <div class="proto-sec">참고 · v1 책장 스타일</div>
 
   <div class="shelf">
     <div class="shelf-head">
