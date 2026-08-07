@@ -152,6 +152,20 @@ function queueCounts() {
   };
 }
 
+/* 답안 초안 자동저장: 쓰다가 나가도 안 사라진다. 판정 확정 시 지운다 */
+const DRAFT_KEY = "dajigi_drafts";
+let DRAFTS = {};
+try { DRAFTS = JSON.parse(localStorage.getItem(DRAFT_KEY)) || {}; } catch { DRAFTS = {}; }
+function draftGet(k) { return DRAFTS[k] || ""; }
+function draftSet(k, v) {
+  if (v) DRAFTS[k] = v; else delete DRAFTS[k];
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(DRAFTS));
+}
+function draftClearSub(id) {
+  for (const k of Object.keys(DRAFTS)) if (k === id || k.startsWith(id + "#")) delete DRAFTS[k];
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(DRAFTS));
+}
+
 /* 데일리 골(미니 10장) + 스트릭 */
 function bumpGoal() {
   const today = todayStr();
@@ -321,6 +335,15 @@ function drawerHtml() {
   <div class="drawer-front"><div class="panel"></div><div class="label">채영의 임용 서랍</div></div>`;
 }
 
+function doExport() {
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "amgipt-records-" + todayStr() + ".json";
+  a.click(); URL.revokeObjectURL(a.href);
+  S.lastExport = Date.now(); persist();
+}
+
 function totalWeak() {
   return allSubs().filter(x => { const l = latest(x.id); return l && l.r !== "O"; }).length;
 }
@@ -380,18 +403,14 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   if (sub.type === "term") {
     inputHtml = sub.parts.map((p, pi) => `
       <div class="part-row"><span class="plabel">${esc(p.label)}</span>
-      <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만"></div>`).join("");
+      <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
   } else if (sub.type === "essay") {
-    inputHtml = `<textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}"></textarea>`;
+    inputHtml = `<textarea class="answer" placeholder="${esc(sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)")}">${esc(draftGet(id))}</textarea>`;
   }
   const gradeBtns = sub.type === "self"
     ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
     : `<button class="btn primary" data-act="grade">채점하기</button>
        <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
-  const ml = missLog(id);
-  const mlHtml = ml.length ? `<div class="miss-log">${ico("pin")} 누가기록, 이전에 놓친 포인트: ` +
-    ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
-    (ml.length > 6 ? " 외" : "") + `</div>` : "";
   return `
   <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}">
     ${sub.hideHead
@@ -399,7 +418,6 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
         ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
     ${sub.prompt ? `<div class="sub-prompt md">${md(sub.prompt)}</div>` : ""}
-    ${mlHtml}
     <div class="sub-input">${inputHtml}</div>
     <div class="sub-actions">${gradeBtns}</div>
     <div class="reveal"></div>
@@ -509,6 +527,12 @@ function renderSession() {
 }
 
 function renderCheckpoint(finished) {
+  // 자동 백업: 마지막 백업이 3일 넘었으면 라운드 끝에 기록 JSON을 조용히 내려받는다
+  let autoBackedUp = false;
+  const recCount = Object.values(S.records).reduce((a, h) => a + h.length, 0);
+  if (recCount && (!S.lastExport || Date.now() - S.lastExport > 3 * DAY)) {
+    try { doExport(); autoBackedUp = true; } catch { /* 무시 */ }
+  }
   const r = SESSION.results;
   const subs = allSubs();
   const mastered = subs.filter(x => { const l = latest(x.id); return l && l.r === "O"; }).length;
@@ -531,6 +555,7 @@ function renderCheckpoint(finished) {
       <p class="cp-goal">${done >= 10
         ? `오늘의 미니 골 달성 · 스트릭 ${S.streakDays || 1}일`
         : `오늘 ${done}장 풀었어요. 미니 골까지 ${10 - done}장`}</p>
+      ${autoBackedUp ? `<p class="cp-goal">기록 백업 파일을 자동으로 내려받았어요 (다운로드 폴더)</p>` : ""}
       <div class="cp-actions">
         ${finished ? "" : `<button class="btn primary big" data-act="next-round">다음 라운드 (남은 ${left}장)</button>`}
         <button class="btn ghost" data-act="quit-session">오늘은 여기까지</button>
@@ -668,8 +693,14 @@ function showReveal(subEl, graded) {
       `<span class="kw" data-act="kw-toggle" data-name="${esc(nm)}">${esc(nm)}</span>`).join("") + "</div>";
   }
 
+  // 누가기록은 스포일러 방지를 위해 채점·정답 확인 후에만 보여준다
+  const ml = missLog(id);
+  const mlHtml = ml.length ? `<div class="miss-log">${ico("pin")} 누가기록, 이전에 놓친 포인트: ` +
+    ml.slice(0, 6).map(([n, c]) => `<b>${esc(n)}</b>${c > 1 ? ` ×${c}` : ""}`).join(" · ") +
+    (ml.length > 6 ? " 외" : "") + `</div>` : "";
   subEl.querySelector(".reveal").innerHTML = `
     ${judgeHtml}
+    ${mlHtml}
     <div class="model"><span class="lbl">모범답안</span><div class="md">${md(sub.answer)}</div></div>
     ${sub.note ? `<div class="note">${esc(sub.note)}</div>` : ""}
     <div class="verdict-row">
@@ -692,12 +723,8 @@ function onAppClick(e) {
   const act = btn.dataset.act;
 
   if (act === "export") {
-    const blob = new Blob([JSON.stringify(S, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "dajigi-records-" + new Date().toISOString().slice(0, 10) + ".json";
-    a.click(); URL.revokeObjectURL(a.href);
-    S.lastExport = Date.now(); persist(); renderHome();
+    doExport();
+    renderHome();
     return;
   }
   if (act === "import") { $("#importFile").click(); return; }
@@ -771,6 +798,7 @@ function onAppClick(e) {
     const { quiz, id } = findSub(subEl);
     const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
     record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames);
+    draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
     subEl.querySelector(".saved-msg").textContent = "기록됨";
     const head = subEl.querySelector(".sub-head");
@@ -831,5 +859,15 @@ function render() {
 }
 window.addEventListener("hashchange", render);
 document.addEventListener("click", onAppClick);
+// 답안 초안 자동저장 (입력할 때마다)
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (!t.classList || !t.classList.contains("answer")) return;
+  const subEl = t.closest(".sub");
+  if (!subEl) return;
+  const id = subEl.dataset.sid;
+  const key = t.dataset.part !== undefined ? id + "#" + t.dataset.part : id;
+  draftSet(key, t.value);
+});
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
 render();
