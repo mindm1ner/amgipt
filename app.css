@@ -372,6 +372,21 @@ textarea.answer { resize: vertical; min-height: 74px; }
   -webkit-user-select: none; user-select: none;
 }
 .qa-a .veil:hover, .qa-a .veil.show { color: var(--ink); }
+.qa-x { width: 52px; white-space: nowrap; text-align: right; }
+.ibtn {
+  border: 0; background: none; cursor: pointer; padding: 3px;
+  color: var(--faint); border-radius: 6px;
+}
+.ibtn:hover { color: var(--ink); background: var(--hover); }
+.ibtn .ico { width: 15px; height: 15px; }
+.wl-head .ibtn { margin-left: auto; }
+.q-editrow textarea, .q-editrow input {
+  width: 100%; padding: 9px 12px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--card); color: var(--ink); font: inherit; font-size: .88rem;
+}
+.q-editrow textarea { min-height: 56px; resize: vertical; }
+.qe-btns { display: flex; gap: 8px; justify-content: flex-end; }
 .wl-noq { margin-top: 4px; font-size: .8rem; color: var(--faint); }
 
 /* 오답 뽀개기 드릴 */

@@ -383,7 +383,10 @@ const ICONS = {
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
   spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="currentColor" stroke="none"/>',
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9"/>',
-  mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>'
+  mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
+  pen: '<path d="M4 20l4-1L20 7l-3-3L5 16z"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>'
 };
 function ico(name) {
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -770,10 +773,12 @@ function renderWrong() {
   const filters = [["all", `전체 ${allEnts.length}`], ["1", `1번 ${dist[1] || 0}`], ["2", `2번 ${dist[2] || 0}`], ["3", `3번+ ${dist[3] || 0}`]];
 
   const qaRow = it => `
-    <tr class="${it.ok ? "qdone" : ""}">
+    <tr class="${it.ok ? "qdone" : ""}" data-sid="${esc(it.sid)}"${it.groups ? "" : ` data-oq="${esc(it.q)}"`}>
       <td class="qa-c"><input type="checkbox" class="qsel" data-key="${esc(it.key)}"></td>
       <td class="qa-q">${it.ok ? "✓ " : ""}${esc(it.q)} <span class="wl-qn">${it.cnt}회 틀림</span></td>
       <td class="qa-a"><span class="veil" data-act="qa-toggle">${qaAnswerHtml(it)}</span></td>
+      <td class="qa-x">${it.groups ? "" : `<button class="ibtn" data-act="q-edit" title="질문·답 수정">${ico("pen")}</button>
+        <button class="ibtn" data-act="q-del" title="질문 삭제">${ico("x")}</button>`}</td>
     </tr>`;
 
   const sections = [];
@@ -788,9 +793,10 @@ function renderWrong() {
       if (!byCard.has(it.sid)) byCard.set(it.sid, { title: it.title, list: [] });
       byCard.get(it.sid).list.push(it);
     }
-    const rows = [...byCard.values()].map(c => `
-      <div class="wl-card">
-        <div class="wl-head"><span class="wl-t">${esc(c.title)}</span></div>
+    const rows = [...byCard.entries()].map(([sid, c]) => `
+      <div class="wl-card" data-sid="${esc(sid)}">
+        <div class="wl-head"><span class="wl-t">${esc(c.title)}</span>
+          <button class="ibtn" data-act="q-add" title="질문 추가">${ico("plus")}</button></div>
         <table class="qa"><tbody>${c.list.map(qaRow).join("")}</tbody></table>
       </div>`);
     const cc = crushCounts(quiz.id);
@@ -1340,6 +1346,72 @@ function onAppClick(e) {
     return;
   }
   if (act === "qa-toggle") { btn.classList.toggle("show"); return; }
+  /* 오답 질문 편집: 기록(latest.rq)을 직접 고친다. 편집 내용도 계정 동기화에 실린다 */
+  if (act === "q-edit" || act === "q-add") {
+    const isAdd = act === "q-add";
+    let sid, q = "", kstr = "";
+    if (isAdd) sid = btn.closest(".wl-card").dataset.sid;
+    else {
+      const row = btn.closest("tr");
+      sid = row.dataset.sid; q = row.dataset.oq || "";
+      const l = latest(sid);
+      const r = (Array.isArray(l && l.rq) ? l.rq : []).find(x => (x.q || "") === q);
+      kstr = r && Array.isArray(r.k) ? r.k.join(" · ") : "";
+    }
+    const editor = `<tr class="q-editrow" data-sid="${esc(sid)}" data-oq="${esc(isAdd ? "" : q)}">
+      <td class="qa-c"></td>
+      <td colspan="3">
+        <textarea class="qe-q" placeholder="질문">${esc(q)}</textarea>
+        <input class="qe-k" placeholder="정답 키워드 (· 또는 쉼표로 구분, 같은 뜻 표기 여러 개 가능)" value="${esc(kstr)}">
+        <div class="qe-btns">
+          <button class="btn ghost" data-act="q-cancel">취소</button>
+          <button class="btn primary" data-act="q-save">저장</button>
+        </div>
+      </td></tr>`;
+    if (isAdd) btn.closest(".wl-card").querySelector("tbody").insertAdjacentHTML("beforeend", editor);
+    else btn.closest("tr").outerHTML = editor;
+    return;
+  }
+  if (act === "q-cancel") { renderWrong(); return; }
+  if (act === "q-save") {
+    const row = btn.closest("tr");
+    const sid = row.dataset.sid, oq = row.dataset.oq;
+    const q = row.querySelector(".qe-q").value.trim();
+    const k = row.querySelector(".qe-k").value.split(/[·,;|/]/).map(s => s.trim()).filter(s => s.replace(/\s/g, "").length >= 2);
+    if (!q) { alert("질문을 입력해 주세요."); return; }
+    const l = latest(sid);
+    if (!l) return;
+    if (typeof l.rq === "string") l.rq = l.rq ? [{ q: l.rq, n: "", k: [] }] : [];
+    if (!Array.isArray(l.rq)) l.rq = [];
+    if (oq) {
+      const i = l.rq.findIndex(x => (x.q || "") === oq);
+      if (i >= 0) {
+        l.rq[i] = { n: l.rq[i].n || "", q, k };
+        if (oq !== q) { // 질문 문구가 바뀌면 질문 통계도 따라간다
+          const okey = sid + "|" + oq, nkey = sid + "|" + q;
+          if (QSTAT[okey]) { QSTAT[nkey] = QSTAT[okey]; delete QSTAT[okey]; }
+        }
+      }
+    } else l.rq.push({ n: "", q, k });
+    saveQstat();
+    renderWrong();
+    return;
+  }
+  if (act === "q-del") {
+    const row = btn.closest("tr");
+    const sid = row.dataset.sid, oq = row.dataset.oq;
+    if (!confirm("이 질문을 삭제할까요?")) return;
+    const l = latest(sid);
+    if (l && Array.isArray(l.rq)) {
+      const i = l.rq.findIndex(x => (x.q || "") === oq);
+      if (i >= 0) l.rq.splice(i, 1);
+      if (!l.rq.length) delete l.rq;
+    }
+    delete QSTAT[sid + "|" + oq];
+    saveQstat();
+    renderWrong();
+    return;
+  }
   if (act === "crush-resume") { CRUSH = loadCrush(); if (CRUSH) location.hash = "#crush"; return; }
   if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
   if (act === "toggle-subject") {
