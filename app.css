@@ -380,6 +380,8 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .ibtn:hover { color: var(--ink); background: var(--hover); }
 .ibtn .ico { width: 15px; height: 15px; }
 .wl-head .ibtn { margin-left: auto; }
+.q-editbox { margin: 10px 0; }
+.q-editbox textarea, .q-editbox input,
 .q-editrow textarea, .q-editrow input {
   width: 100%; padding: 9px 12px; margin-bottom: 8px;
   border: 1px solid var(--line); border-radius: 9px;

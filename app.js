@@ -56,6 +56,14 @@ function mergeRemote(remote) {
     for (const r of arr) if (!cur.some(c => c.t === r.t && c.r === r.r)) { cur.push(r); added++; }
     cur.sort((a, b) => (a.t || 0) - (b.t || 0));
   }
+  // 내 질문(커스텀) 병합: 카드별로 질문 문구 기준 합집합
+  if (remote.myq && typeof remote.myq === "object") {
+    S.myq = S.myq || {};
+    for (const [sid, arr] of Object.entries(remote.myq)) {
+      const cur = S.myq[sid] || (S.myq[sid] = []);
+      for (const r of arr) if (r && r.q && !cur.some(c => c.q === r.q)) cur.push(r);
+    }
+  }
   // 질문 단위 드릴 통계 병합: 틀린 횟수는 큰 쪽, 맞춘 시각은 최근 쪽
   if (remote.qstat && typeof remote.qstat === "object") {
     S.qstat = S.qstat || {};
@@ -658,10 +666,11 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       <button class="btn primary" data-act="hide-relearn">다 읽었다, 가리고 인출</button>
     </div>`;
   }
-  const gradeBtns = sub.type === "self"
+  const gradeBtns = (sub.type === "self"
     ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
     : `<button class="btn primary" data-act="grade">채점하기</button>
-       <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
+       <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`) +
+    `<button class="btn ghost" data-act="q-add-card" title="이 카드에 내 질문 추가">${ico("plus")} 질문</button>`;
   return `
   <div class="sub${relearnHtml ? " relearning" : ""}" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}"${fg ? ' data-focus="1"' : ""}>
     ${sub.hideHead
@@ -733,25 +742,33 @@ function wfMatchN(n) {
 }
 /* 질문 단위 목록: 오답 브라우징·뽀개기의 공통 원천.
    cnt = 태어난 계기(세션 틀림) + 뽀개기 다시 쌓기 횟수, ok = 뽀개기에서 맞춘 분류 */
+function myqOf(sid) { return (S.myq && S.myq[sid]) || []; }
 function questionEntries(quizId) {
   const out = [];
   for (const x of allSubs()) {
-    if ((quizId && x.quiz.id !== quizId) || !isWeak(x.id)) continue;
+    if (quizId && x.quiz.id !== quizId) continue;
+    const my = myqOf(x.id);
+    const weak = isWeak(x.id);
+    if (!weak && !my.length) continue; // 오답이거나 내 질문이 있는 카드만
     const l = latest(x.id);
     let rqs = l && l.rq;
     if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
-    const push = it => {
+    const push = (it, seed) => {
       it.key = crushKey(it);
+      it.seed = seed; // 태어난 계기의 틀림 횟수 (드릴 틀림은 qstat.w에 쌓임)
       const st = qstat(it.key);
-      it.cnt = st.w + (it.groups ? Math.max(1, wrongTimes(x.id)) : 1);
+      it.cnt = st.w + seed;
       it.ok = !!st.ok;
       out.push(it);
     };
-    if (Array.isArray(rqs) && rqs.length) {
-      for (const r of rqs) push({ sid: x.id, title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
-    } else {
-      push({ sid: x.id, title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer });
+    if (weak) {
+      if (Array.isArray(rqs) && rqs.length) {
+        for (const r of rqs) push({ src: "rq", sid: x.id, title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer }, 1);
+      } else {
+        push({ src: "full", sid: x.id, title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer }, Math.max(1, wrongTimes(x.id)));
+      }
     }
+    for (const r of my) push({ src: "my", sid: x.id, title: x.q.title, q: r.q || "", n: "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer }, 0);
   }
   return out;
 }
@@ -773,11 +790,13 @@ function renderWrong() {
   const filters = [["all", `전체 ${allEnts.length}`], ["1", `1번 ${dist[1] || 0}`], ["2", `2번 ${dist[2] || 0}`], ["3", `3번+ ${dist[3] || 0}`]];
 
   const qaRow = it => `
-    <tr class="${it.ok ? "qdone" : ""}" data-sid="${esc(it.sid)}"${it.groups ? "" : ` data-oq="${esc(it.q)}"`}>
+    <tr class="${it.ok ? "qdone" : ""}" data-sid="${esc(it.sid)}" data-src="${esc(it.src)}"${it.src === "full" ? "" : ` data-oq="${esc(it.q)}"`}>
       <td class="qa-c"><input type="checkbox" class="qsel" data-key="${esc(it.key)}"></td>
-      <td class="qa-q">${it.ok ? "✓ " : ""}${esc(it.q)} <span class="wl-qn">${it.cnt}회 틀림</span></td>
+      <td class="qa-q">${it.ok ? "✓ " : ""}${esc(it.q)}
+        ${it.cnt ? `<span class="wl-qn">${it.cnt}회 틀림</span>` : ""}
+        ${it.src === "my" ? `<span class="chip">내 질문</span>` : ""}</td>
       <td class="qa-a"><span class="veil" data-act="qa-toggle">${qaAnswerHtml(it)}</span></td>
-      <td class="qa-x">${it.groups ? "" : `<button class="ibtn" data-act="q-edit" title="질문·답 수정">${ico("pen")}</button>
+      <td class="qa-x">${it.src === "full" ? "" : `<button class="ibtn" data-act="q-edit" title="질문·답 수정">${ico("pen")}</button>
         <button class="ibtn" data-act="q-del" title="질문 삭제">${ico("x")}</button>`}</td>
     </tr>`;
 
@@ -925,7 +944,10 @@ function renderCrush() {
     </div>
     <section class="q-card sess-card sub crush">
       <div class="sess-meta"><span>${esc(it.title)}</span>
-        <span class="lastmark m-X">이 질문 ${qstat(crushKey(it)).w + (it.groups ? wrongTimes(it.sid) : 1)}회 틀림</span></div>
+        ${(() => {
+          const n = qstat(crushKey(it)).w + (typeof it.seed === "number" ? it.seed : 1);
+          return n ? `<span class="lastmark m-X">이 질문 ${n}회 틀림</span>` : `<span class="lastmark m-new">내 질문</span>`;
+        })()}</div>
       <div class="q-head"><span class="qno">${esc(it.q)}</span></div>
       ${inner}
     </section>`;
@@ -1349,16 +1371,17 @@ function onAppClick(e) {
   /* 오답 질문 편집: 기록(latest.rq)을 직접 고친다. 편집 내용도 계정 동기화에 실린다 */
   if (act === "q-edit" || act === "q-add") {
     const isAdd = act === "q-add";
-    let sid, q = "", kstr = "";
+    let sid, q = "", kstr = "", src = "my"; // 새 질문은 언제나 내 질문으로
     if (isAdd) sid = btn.closest(".wl-card").dataset.sid;
     else {
       const row = btn.closest("tr");
-      sid = row.dataset.sid; q = row.dataset.oq || "";
-      const l = latest(sid);
-      const r = (Array.isArray(l && l.rq) ? l.rq : []).find(x => (x.q || "") === q);
+      sid = row.dataset.sid; q = row.dataset.oq || ""; src = row.dataset.src || "rq";
+      let r;
+      if (src === "my") r = myqOf(sid).find(x => (x.q || "") === q);
+      else { const l = latest(sid); r = (Array.isArray(l && l.rq) ? l.rq : []).find(x => (x.q || "") === q); }
       kstr = r && Array.isArray(r.k) ? r.k.join(" · ") : "";
     }
-    const editor = `<tr class="q-editrow" data-sid="${esc(sid)}" data-oq="${esc(isAdd ? "" : q)}">
+    const editor = `<tr class="q-editrow" data-sid="${esc(sid)}" data-oq="${esc(isAdd ? "" : q)}" data-src="${esc(src)}">
       <td class="qa-c"></td>
       <td colspan="3">
         <textarea class="qe-q" placeholder="질문">${esc(q)}</textarea>
@@ -1375,37 +1398,49 @@ function onAppClick(e) {
   if (act === "q-cancel") { renderWrong(); return; }
   if (act === "q-save") {
     const row = btn.closest("tr");
-    const sid = row.dataset.sid, oq = row.dataset.oq;
+    const sid = row.dataset.sid, oq = row.dataset.oq, src = row.dataset.src;
     const q = row.querySelector(".qe-q").value.trim();
     const k = row.querySelector(".qe-k").value.split(/[·,;|/]/).map(s => s.trim()).filter(s => s.replace(/\s/g, "").length >= 2);
     if (!q) { alert("질문을 입력해 주세요."); return; }
-    const l = latest(sid);
-    if (!l) return;
-    if (typeof l.rq === "string") l.rq = l.rq ? [{ q: l.rq, n: "", k: [] }] : [];
-    if (!Array.isArray(l.rq)) l.rq = [];
-    if (oq) {
+    if (src === "my") {
+      S.myq = S.myq || {};
+      const arr = S.myq[sid] || (S.myq[sid] = []);
+      if (oq) {
+        const i = arr.findIndex(x => (x.q || "") === oq);
+        if (i >= 0) arr[i] = { q, k };
+      } else arr.push({ q, k });
+    } else {
+      const l = latest(sid);
+      if (!l) return;
+      if (typeof l.rq === "string") l.rq = l.rq ? [{ q: l.rq, n: "", k: [] }] : [];
+      if (!Array.isArray(l.rq)) l.rq = [];
       const i = l.rq.findIndex(x => (x.q || "") === oq);
-      if (i >= 0) {
-        l.rq[i] = { n: l.rq[i].n || "", q, k };
-        if (oq !== q) { // 질문 문구가 바뀌면 질문 통계도 따라간다
-          const okey = sid + "|" + oq, nkey = sid + "|" + q;
-          if (QSTAT[okey]) { QSTAT[nkey] = QSTAT[okey]; delete QSTAT[okey]; }
-        }
-      }
-    } else l.rq.push({ n: "", q, k });
+      if (i >= 0) l.rq[i] = { n: l.rq[i].n || "", q, k };
+    }
+    if (oq && oq !== q) { // 질문 문구가 바뀌면 질문 통계도 따라간다
+      const okey = sid + "|" + oq, nkey = sid + "|" + q;
+      if (QSTAT[okey]) { QSTAT[nkey] = QSTAT[okey]; delete QSTAT[okey]; }
+    }
     saveQstat();
     renderWrong();
     return;
   }
   if (act === "q-del") {
     const row = btn.closest("tr");
-    const sid = row.dataset.sid, oq = row.dataset.oq;
+    const sid = row.dataset.sid, oq = row.dataset.oq, src = row.dataset.src;
     if (!confirm("이 질문을 삭제할까요?")) return;
-    const l = latest(sid);
-    if (l && Array.isArray(l.rq)) {
-      const i = l.rq.findIndex(x => (x.q || "") === oq);
-      if (i >= 0) l.rq.splice(i, 1);
-      if (!l.rq.length) delete l.rq;
+    if (src === "my") {
+      const arr = (S.myq && S.myq[sid]) || [];
+      const i = arr.findIndex(x => (x.q || "") === oq);
+      if (i >= 0) arr.splice(i, 1);
+      if (!arr.length && S.myq) delete S.myq[sid];
+    } else {
+      const l = latest(sid);
+      if (l && Array.isArray(l.rq)) {
+        const i = l.rq.findIndex(x => (x.q || "") === oq);
+        if (i >= 0) l.rq.splice(i, 1);
+        if (!l.rq.length) delete l.rq;
+      }
     }
     delete QSTAT[sid + "|" + oq];
     saveQstat();
@@ -1457,6 +1492,29 @@ function onAppClick(e) {
   if (!subEl) return;
 
   if (act === "mic") { toggleMic(subEl, btn); return; }
+  /* 어느 카드에서든 내 질문 추가 (오답 여부 무관, S.myq에 저장 → 오답 탭에서 관리·뽀개기) */
+  if (act === "q-add-card") {
+    if (subEl.querySelector(".q-editbox")) return;
+    subEl.querySelector(".sub-actions").insertAdjacentHTML("beforebegin", `<div class="q-editbox">
+      <textarea class="qe-q" placeholder="질문"></textarea>
+      <input class="qe-k" placeholder="정답 키워드 (· 또는 쉼표로 구분, 같은 뜻 표기 여러 개 가능)">
+      <div class="qe-btns"><button class="btn ghost" data-act="q-cancel-card">취소</button>
+        <button class="btn primary" data-act="q-save-card">저장</button></div></div>`);
+    subEl.querySelector(".q-editbox .qe-q").focus();
+    return;
+  }
+  if (act === "q-cancel-card") { subEl.querySelector(".q-editbox")?.remove(); return; }
+  if (act === "q-save-card") {
+    const box = subEl.querySelector(".q-editbox");
+    const q = box.querySelector(".qe-q").value.trim();
+    const k = box.querySelector(".qe-k").value.split(/[·,;|/]/).map(s => s.trim()).filter(s => s.replace(/\s/g, "").length >= 2);
+    if (!q) { alert("질문을 입력해 주세요."); return; }
+    S.myq = S.myq || {};
+    (S.myq[subEl.dataset.sid] = S.myq[subEl.dataset.sid] || []).push({ q, k });
+    persist();
+    box.outerHTML = `<div class="kw-note">내 질문으로 저장했어요. 오답 탭에서 관리와 뽀개기가 돼요.</div>`;
+    return;
+  }
   if (act === "hide-relearn") {
     subEl.querySelector(".relearn")?.remove();
     subEl.classList.remove("relearning");
