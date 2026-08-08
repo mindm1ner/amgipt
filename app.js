@@ -138,14 +138,19 @@ function persist() { localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(
 function subId(quiz, q, sub) { return quiz.id + "|" + q.no + "|" + sub.no; }
 function history(id) { return S.records[id] || []; }
 function latest(id) { const h = history(id); return h.length ? h[h.length - 1] : null; }
-function record(id, r, auto, miss) {
+function record(id, r, auto, miss, rq) {
   const h = S.records[id] || (S.records[id] = []);
   const t = Date.now();
   const last = h[h.length - 1];
   const m = (miss && miss.length) ? miss : undefined;
+  const q = (r !== "O" && rq) ? rq : undefined; // AI 재질문: 다음 집중 인출의 문제로 쓴다
   // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
-  if (last && t - last.t < 10 * 60 * 1000) { last.r = r; last.a = auto || last.a; last.t = t; if (m) last.m = m; else delete last.m; }
-  else h.push({ d: todayStr(), r, a: auto || null, t, ...(m ? { m } : {}) });
+  if (last && t - last.t < 10 * 60 * 1000) {
+    last.r = r; last.a = auto || last.a; last.t = t;
+    if (m) last.m = m; else delete last.m;
+    if (q) last.rq = q; else delete last.rq;
+  }
+  else h.push({ d: todayStr(), r, a: auto || null, t, ...(m ? { m } : {}), ...(q ? { rq: q } : {}) });
   persist();
 }
 
@@ -511,7 +516,8 @@ function focusGroupsFor(id, sub) {
   if (!l || l.r === "O" || !l.m || !l.m.length) return null;
   const names = new Set(l.m);
   const g = sub.groups.filter(x => names.has(x.name));
-  return g.length && g.length < sub.groups.length ? g : null;
+  // AI 재질문이 있으면 전부 놓쳤어도 집중 모드로 (질문 자체가 구체적이라)
+  return g.length && (g.length < sub.groups.length || l.rq) ? g : null;
 }
 function effGroups(subEl, sub) {
   if (subEl.dataset.focus === "1") {
@@ -527,15 +533,22 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   const fg = sub.type === "essay" ? focusGroupsFor(id, sub) : null;
   let focusHtml = "";
   if (fg) {
-    // 스포일러 방지: 이름에 "주제: 내용" 구조가 있으면 주제만 물음표로, 없으면 개수만
-    const named = fg.map(g => g.name.includes(":") ? g.name.split(":")[0].trim() + "?" : null).filter(Boolean);
-    const blind = fg.length - named.length;
+    const rq = (latest(id) || {}).rq;
+    let bodyHtml;
+    if (rq) {
+      // AI가 지난 채점에서 만든 재질문: 놓친 것만 콕 집어 묻는다
+      bodyHtml = `<div class="focus-q">${esc(rq)}</div>`;
+    } else {
+      // 재질문이 없으면 폴백: "주제: 내용" 이름은 주제만 물음표로, 없으면 개수만 (스포일러 방지)
+      const named = fg.map(g => g.name.includes(":") ? g.name.split(":")[0].trim() + "?" : null).filter(Boolean);
+      const blind = fg.length - named.length;
+      bodyHtml = `<ul class="focus-cues">${named.map(c => `<li>${esc(c)}</li>`).join("")}
+        ${blind ? `<li>힌트 없이 인출할 포인트 ${blind}개</li>` : ""}</ul>`;
+    }
     focusHtml = `<div class="focus-bar">
         <span>${ico("bolt")} 집중 인출 · 지난번 놓친 포인트 ${fg.length}개만 물어요</span>
         <button class="linkbtn" data-act="full-sub">전체로 풀기</button>
-      </div>
-      <ul class="focus-cues">${named.map(c => `<li>${esc(c)}</li>`).join("")}
-        ${blind ? `<li>힌트 없이 인출할 포인트 ${blind}개</li>` : ""}</ul>`;
+      </div>` + bodyHtml;
   }
   let inputHtml = "";
   if (sub.type === "term") {
@@ -735,24 +748,30 @@ async function aiJudgeKeywords(topic, model, names, matched, input) {
 }
 
 async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
-  const missIdx = literalFlags.map((f, i) => (f ? -1 : i)).filter(i => i >= 0);
   const statusEl = () => subEl.querySelector(".ai-status");
   try {
+    // v3: 전체 요소를 보내 문자 인정분까지 근거를 확인하고, 키워드 밖 결손 + 재질문을 받는다
     const data = await aiJudgeKeywords(
       topic, model,
-      missIdx.map(i => groups[i].name),
+      groups.map(g => g.name),
       literalFlags.map((f, i) => f ? groups[i].name : null).filter(Boolean),
       input);
     const results = data.results || [];
+    const byName = new Map(results.map(r => [r.name, r]));
     const flags = literalFlags.slice();
     const notes = [];
-    missIdx.forEach((gi, k) => {
-      const r = results[k];
+    groups.forEach((g, gi) => {
+      const r = byName.get(g.name) || results[gi];
       if (!r) return;
       // 구버전 함수 호환: found(bool)만 있으면 good/missed로 해석
       const verdict = r.verdict || (r.found ? "good" : "missed");
       const chip = subEl.querySelector(`.kw[data-g="${gi}"]`);
-      const nm = groups[gi].name;
+      const nm = g.name;
+      if (literalFlags[gi]) {
+        // 문자로 이미 인정된 요소: 판정은 유지하고 근거만 달아준다
+        if (chip && r.evidence) chip.title = "근거: " + r.evidence;
+        return;
+      }
       if (verdict === "good") {
         flags[gi] = true;
         if (chip) {
@@ -774,12 +793,19 @@ async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
         if (r.note) notes.push({ mark: "✗", nm, note: r.note });
       }
     });
+    // 키워드 밖 결손: 단권화 원문에는 있는데 채점 요소에도, 답안에도 없는 내용
+    for (const gp of (data.gaps || []).slice(0, 3)) {
+      if (gp && gp.point) notes.push({ mark: "✗", nm: gp.point + " (키워드 밖)", note: gp.note || "" });
+    }
+    // AI가 만든 재질문: 판정 확정 시 기록에 저장되어 다음 집중 인출의 문제가 된다
+    if (data.retry_question) subEl.dataset.rq = data.retry_question;
     const s = statusEl();
     if (s) {
       s.classList.add("ai-diag");
       s.innerHTML =
         `<div class="diag-sum">${ico("spark")} <b>AI 진단</b> ${esc(data.summary || "판정을 마쳤어요.")}</div>` +
-        notes.map(n => `<div class="dnote"><span class="${n.mark === "△" ? "dm-part" : "dm-miss"}">${n.mark}</span> <b>${esc(n.nm)}</b> ${esc(n.note)}</div>`).join("");
+        notes.map(n => `<div class="dnote"><span class="${n.mark === "△" ? "dm-part" : "dm-miss"}">${n.mark}</span> <b>${esc(n.nm)}</b> ${esc(n.note)}</div>`).join("") +
+        (data.retry_question ? `<div class="dnote next-q"><b>다음 복습 질문</b> ${esc(data.retry_question)}</div>` : "");
     }
     if (!subEl.querySelector(".vbtn.chosen")) {
       const newSuggest = suggestFrom(flags);
@@ -963,7 +989,7 @@ function onAppClick(e) {
   if (act === "verdict") {
     const { quiz, id } = findSub(subEl);
     const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
-    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames);
+    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "");
     draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
     subEl.querySelector(".saved-msg").textContent = "기록됨";
