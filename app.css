@@ -313,12 +313,15 @@ textarea.answer { resize: vertical; min-height: 74px; }
 }
 .focus-cues li { padding: 2px 0; }
 .focus-cues li::before { content: "· "; color: var(--sub); }
-.focus-q {
-  margin: 0 0 8px; padding: 10px 14px;
+.focus-qs {
+  margin: 0 0 8px; padding: 10px 14px 10px 34px;
   border-left: 2px solid var(--accent); background: var(--accent-soft);
-  font-size: .92rem; color: var(--ink); white-space: pre-line;
+  font-size: .92rem; color: var(--ink);
 }
+.focus-qs li { padding: 3px 0; }
 .dnote.next-q { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 8px; color: var(--sub); }
+.nq-list { margin: 4px 0 0; padding-left: 20px; }
+.nq-list li { padding: 2px 0; }
 
 /* 동기화 시트 */
 .sync-p { font-size: .84rem; color: var(--sub); margin: 12px 0 6px; }

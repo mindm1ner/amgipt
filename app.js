@@ -143,7 +143,10 @@ function record(id, r, auto, miss, rq) {
   const t = Date.now();
   const last = h[h.length - 1];
   const m = (miss && miss.length) ? miss : undefined;
-  const q = (r !== "O" && rq) ? rq : undefined; // AI 재질문: 다음 집중 인출의 문제로 쓴다
+  // AI 재질문 목록(JSON 문자열로 전달됨): 다음 집중 인출의 문제 목록으로 쓴다
+  let q;
+  if (r !== "O" && rq) { try { q = JSON.parse(rq); } catch { q = rq; } }
+  if (Array.isArray(q) && !q.length) q = undefined;
   // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
   if (last && t - last.t < 10 * 60 * 1000) {
     last.r = r; last.a = auto || last.a; last.t = t;
@@ -533,11 +536,12 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   const fg = sub.type === "essay" ? focusGroupsFor(id, sub) : null;
   let focusHtml = "";
   if (fg) {
-    const rq = (latest(id) || {}).rq;
+    let rqs = (latest(id) || {}).rq;
+    if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }]; // 구형(문자열 1개) 호환
     let bodyHtml;
-    if (rq) {
-      // AI가 지난 채점에서 만든 재질문: 놓친 것만 콕 집어 묻는다
-      bodyHtml = `<div class="focus-q">${esc(rq)}</div>`;
+    if (Array.isArray(rqs) && rqs.length) {
+      // AI가 지난 채점에서 놓친 것마다 하나씩 만든 재질문 목록
+      bodyHtml = `<ol class="focus-qs">${rqs.map(r => `<li>${esc(r.q || "")}</li>`).join("")}</ol>`;
     } else {
       // 재질문이 없으면 폴백: "주제: 내용" 이름은 주제만 물음표로, 없으면 개수만 (스포일러 방지)
       const named = fg.map(g => g.name.includes(":") ? g.name.split(":")[0].trim() + "?" : null).filter(Boolean);
@@ -797,15 +801,18 @@ async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
     for (const gp of (data.gaps || []).slice(0, 3)) {
       if (gp && gp.point) notes.push({ mark: "✗", nm: gp.point + " (키워드 밖)", note: gp.note || "" });
     }
-    // AI가 만든 재질문: 판정 확정 시 기록에 저장되어 다음 집중 인출의 문제가 된다
-    if (data.retry_question) subEl.dataset.rq = data.retry_question;
+    // AI가 놓친 것마다 하나씩 만든 재질문: 판정 확정 시 기록에 저장되어 다음 집중 인출의 문제 목록이 된다
+    const retry = (Array.isArray(data.retry) ? data.retry : [])
+      .filter(r => r && r.q).map(r => ({ n: r.target || "", q: r.q }))
+      .concat(!Array.isArray(data.retry) && data.retry_question ? [{ n: "", q: data.retry_question }] : []);
+    if (retry.length) subEl.dataset.rq = JSON.stringify(retry);
     const s = statusEl();
     if (s) {
       s.classList.add("ai-diag");
       s.innerHTML =
         `<div class="diag-sum">${ico("spark")} <b>AI 진단</b> ${esc(data.summary || "판정을 마쳤어요.")}</div>` +
         notes.map(n => `<div class="dnote"><span class="${n.mark === "△" ? "dm-part" : "dm-miss"}">${n.mark}</span> <b>${esc(n.nm)}</b> ${esc(n.note)}</div>`).join("") +
-        (data.retry_question ? `<div class="dnote next-q"><b>다음 복습 질문</b> ${esc(data.retry_question)}</div>` : "");
+        (retry.length ? `<div class="dnote next-q"><b>다음 복습 질문</b><ol class="nq-list">${retry.map(r => `<li>${esc(r.q)}</li>`).join("")}</ol></div>` : "");
     }
     if (!subEl.querySelector(".vbtn.chosen")) {
       const newSuggest = suggestFrom(flags);
