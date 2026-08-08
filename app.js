@@ -56,6 +56,16 @@ function mergeRemote(remote) {
     for (const r of arr) if (!cur.some(c => c.t === r.t && c.r === r.r)) { cur.push(r); added++; }
     cur.sort((a, b) => (a.t || 0) - (b.t || 0));
   }
+  // 질문 단위 드릴 통계 병합: 틀린 횟수는 큰 쪽, 맞춘 시각은 최근 쪽
+  if (remote.qstat && typeof remote.qstat === "object") {
+    S.qstat = S.qstat || {};
+    for (const [k, v] of Object.entries(remote.qstat)) {
+      const cur = S.qstat[k];
+      S.qstat[k] = cur
+        ? { w: Math.max(cur.w || 0, v.w || 0), ok: Math.max(cur.ok || 0, v.ok || 0) }
+        : v;
+    }
+  }
   if (remote.lastExport && (!S.lastExport || remote.lastExport > S.lastExport)) S.lastExport = remote.lastExport;
   if ((remote.streakDays || 0) > (S.streakDays || 0)) S.streakDays = remote.streakDays;
   if (remote.lastGoalDate && (!S.lastGoalDate || remote.lastGoalDate > S.lastGoalDate)) S.lastGoalDate = remote.lastGoalDate;
@@ -740,12 +750,17 @@ function renderWrong() {
       const l = latest(id);
       let rqs = l && l.rq;
       if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
+      const qLine = qtext => {
+        const st = qstat(id + "|" + qtext);
+        return `<li class="${st.ok ? "qdone" : ""}">${st.ok ? "✓ " : ""}${esc(qtext)}
+          ${st.w ? `<span class="wl-qn">${st.w}회 틀림</span>` : ""}</li>`;
+      };
       rows.push(`<div class="wl-card">
         <div class="wl-head"><span class="wl-t">${esc(q.title)}${sub.hideHead ? "" : " · " + esc(String(sub.no))}</span>
           <span class="wl-n">${wrongTimes(id)}회 틀림</span></div>
         ${Array.isArray(rqs) && rqs.length
-          ? `<ol class="wl-qs">${rqs.map(r => `<li>${esc(r.q || "")}</li>`).join("")}</ol>`
-          : `<div class="wl-noq">아직 AI 질문 없음, 뽀개기에서 전체 인출로 나와요</div>`}
+          ? `<ol class="wl-qs">${rqs.map(r => qLine(r.q || "")).join("")}</ol>`
+          : `<ol class="wl-qs">${qLine(q.title + " 전체 인출")}</ol>`}
       </div>`);
     }));
     if (!rows.length) continue;
@@ -755,7 +770,17 @@ function renderWrong() {
         <summary><span class="ws-name">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}</span>
           <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${rows.length}개</span></summary>
         <div class="ws-body">
-          <button class="btn primary" data-act="crush-start" data-quiz="${esc(quiz.id)}">${ico("bolt")} 오답 뽀개기 시작</button>
+          ${(() => {
+            const cc = crushCounts(quiz.id);
+            const sv = loadCrush();
+            const resume = sv && sv.quiz === quiz.id;
+            return `<div class="wl-btns">
+              ${resume ? `<button class="btn primary" data-act="crush-resume">${ico("bolt")} 이어서 뽀개기 (남은 ${sv.pile.length})</button>
+                          <button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}">처음부터</button>`
+                : cc.rem ? `<button class="btn primary" data-act="crush-start" data-quiz="${esc(quiz.id)}">${ico("bolt")} 오답 뽀개기 시작 (${cc.rem})</button>` : ""}
+              ${cc.all > cc.rem ? `<button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}" data-all="1">맞춘 ${cc.all - cc.rem}개 포함해 시작</button>` : ""}
+            </div>`;
+          })()}
           ${rows.join("")}
         </div>
       </details>`);
@@ -774,9 +799,31 @@ function renderWrong() {
   window.scrollTo(0, 0);
 }
 
-/* ---------- 오답 뽀개기 (퀴즐렛식 드릴: 한 질문씩, 틀리면 더미 맨 뒤로, 다 맞출 때까지) ---------- */
+/* ---------- 오답 뽀개기 (퀴즐렛식 드릴: 한 질문씩, 틀리면 더미 맨 뒤로, 다 맞출 때까지) ----------
+   맞춘 질문은 분류되어(dajigi_crush_done) 다음 뽀개기에서 빠진다. "맞춘 것 포함"으로 다시 소환 가능.
+   진행 중 상태는 저장되어(dajigi_crush) 나갔다 와도 이어서 한다. */
 let CRUSH = null;
-function buildCrushItems(quizId) {
+/* 질문 단위 통계: { 키: { w: 틀린 횟수, ok: 마지막으로 맞춘 시각(0이면 미분류) } }
+   기록 저장소(S) 안에 두어 계정 동기화에 같이 실린다. */
+let QSTAT = (S.qstat && typeof S.qstat === "object") ? S.qstat : {};
+S.qstat = QSTAT;
+function crushKey(it) { return it.sid + "|" + (it.q || "full"); }
+function qstat(key) { return QSTAT[key] || { w: 0, ok: 0 }; }
+function saveQstat() { S.qstat = QSTAT; persist(); }
+function saveCrush() {
+  if (CRUSH && CRUSH.pile.length) {
+    localStorage.setItem("dajigi_crush", JSON.stringify({ quiz: CRUSH.quiz, pile: CRUSH.pile, done: CRUSH.done, total: CRUSH.total }));
+  } else localStorage.removeItem("dajigi_crush");
+}
+function loadCrush() {
+  try {
+    const s = JSON.parse(localStorage.getItem("dajigi_crush"));
+    if (s && Array.isArray(s.pile) && s.pile.length)
+      return { ...s, reveal: false, checking: false, lastVal: "", aiNote: "", chips: null };
+  } catch { /* 무시 */ }
+  return null;
+}
+function buildCrushItems(quizId, includeMastered) {
   const items = [];
   for (const x of allSubs()) {
     if (x.quiz.id !== quizId || !isWeak(x.id) || !wfMatch(x.id)) continue;
@@ -784,13 +831,32 @@ function buildCrushItems(quizId) {
     let rqs = l && l.rq;
     if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
     if (Array.isArray(rqs) && rqs.length) {
-      for (const r of rqs) items.push({ title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
+      for (const r of rqs) items.push({ sid: x.id, title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
     } else {
       // AI 질문이 없는 오답: 카드 전체 인출 — 원래 카드처럼 키워드 그룹 전체를 문자+AI로 판정
-      items.push({ title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer });
+      items.push({ sid: x.id, title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer });
     }
   }
-  return items;
+  return includeMastered ? items : items.filter(it => !qstat(crushKey(it)).ok);
+}
+function crushCounts(quizId) {
+  const all = buildCrushItems(quizId, true);
+  const rem = all.filter(it => !qstat(crushKey(it)).ok);
+  return { all: all.length, rem: rem.length };
+}
+function crushPass(it) {
+  const key = crushKey(it);
+  QSTAT[key] = { ...qstat(key), ok: Date.now() }; // 맞춘 것으로 분류 (틀린 횟수는 보존)
+  saveQstat();
+  CRUSH.done++; CRUSH.pile.shift();
+  CRUSH.reveal = false; CRUSH.aiNote = ""; CRUSH.chips = null;
+  saveCrush();
+}
+function crushWrong(it) {
+  const key = crushKey(it);
+  const st = qstat(key);
+  QSTAT[key] = { w: st.w + 1, ok: 0 }; // 틀린 횟수 +1, 맞춘 분류는 해제
+  saveQstat();
 }
 function renderCrush() {
   if (!CRUSH) { location.hash = "#wrong"; return; }
@@ -798,8 +864,8 @@ function renderCrush() {
     $("#app").innerHTML = `
       <div class="checkpoint">
         <h2>${ico("check")} 오답 뽀개기 완료</h2>
-        <p class="cp-goal">${CRUSH.total}문제를 전부 맞혔어요.</p>
-        <p class="cp-goal">뽀개기는 연습이라 판정 기록은 그대로예요. 세션이나 카드 채점에서 확정하면 오답에서 빠져요.</p>
+        <p class="cp-goal">${CRUSH.total}문제를 전부 맞혔어요. 맞춘 질문은 분류되어 다음 뽀개기에서 빠져요 ("맞춘 것 포함"으로 다시 소환 가능).</p>
+        <p class="cp-goal">뽀개기는 연습이라 카드의 판정 기록은 그대로예요. 세션이나 카드 채점에서 확정하면 오답에서 빠져요.</p>
         <div class="cp-actions"><a class="btn primary big" href="#wrong" data-act="crush-quit">오답으로 돌아가기</a></div>
       </div>`;
     window.scrollTo(0, 0);
@@ -838,7 +904,8 @@ function renderCrush() {
       <span class="prog">맞춘 ${CRUSH.done}/${CRUSH.total} · 남은 ${CRUSH.pile.length}</span>
     </div>
     <section class="q-card sess-card sub crush">
-      <div class="sess-meta"><span>${esc(it.title)}</span></div>
+      <div class="sess-meta"><span>${esc(it.title)}</span>
+        ${qstat(crushKey(it)).w ? `<span class="lastmark m-X">이 질문 ${qstat(crushKey(it)).w}회 틀림</span>` : ""}</div>
       <div class="q-head"><span class="qno">${esc(it.q)}</span></div>
       ${inner}
     </section>`;
@@ -1161,9 +1228,10 @@ function onAppClick(e) {
   if (act === "wrong-filter") { WRONG_FILTER = btn.dataset.f; renderWrong(); return; }
   if (act === "crush-start") {
     e.preventDefault();
-    const items = buildCrushItems(btn.dataset.quiz);
+    const items = buildCrushItems(btn.dataset.quiz, btn.dataset.all === "1");
     if (!items.length) return;
-    CRUSH = { pile: items, total: items.length, done: 0, reveal: false, lastVal: "" };
+    CRUSH = { quiz: btn.dataset.quiz, pile: items, total: items.length, done: 0, reveal: false, lastVal: "", aiNote: "", chips: null };
+    saveCrush();
     location.hash = "#crush";
     return;
   }
@@ -1178,7 +1246,7 @@ function onAppClick(e) {
       const flags = judgeEssay(val, it.groups);
       const finish = (fl, notes) => {
         CRUSH.checking = false;
-        if (fl.every(Boolean)) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.chips = null; }
+        if (fl.every(Boolean)) crushPass(it);
         else {
           CRUSH.reveal = true;
           CRUSH.chips = it.groups.map((g, i) => ({ name: g.name, ok: fl[i], note: (notes && notes[i]) || "" }));
@@ -1212,7 +1280,7 @@ function onAppClick(e) {
       return;
     }
     const hit = it.k.some(v => norm(v) !== "" && norm(val).includes(norm(v)));
-    if (hit) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; }
+    if (hit) crushPass(it);
     else if (aiOn() && norm(val) !== "") { // 키워드가 없는 구형 재질문도 질문+모범답안만으로 AI 판정
       // 문자로는 못 찾음 → AI가 의미 포함 여부를 판정 (맞으면 자동 통과)
       CRUSH.checking = true; CRUSH.lastVal = val.trim();
@@ -1222,7 +1290,7 @@ function onAppClick(e) {
         const r = (d.results || [])[0];
         const verdict = r ? (r.verdict || (r.found ? "good" : "missed")) : "missed";
         CRUSH.checking = false;
-        if (verdict === "good") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; }
+        if (verdict === "good") crushPass(snap);
         else { CRUSH.reveal = true; CRUSH.aiNote = (r && r.note) || ""; }
         renderCrush();
       }).catch(() => {
@@ -1235,9 +1303,17 @@ function onAppClick(e) {
     renderCrush();
     return;
   }
-  if (act === "crush-ok") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; CRUSH.chips = null; renderCrush(); return; }
-  if (act === "crush-again") { CRUSH.pile.push(CRUSH.pile.shift()); CRUSH.reveal = false; CRUSH.aiNote = ""; CRUSH.chips = null; renderCrush(); return; }
-  if (act === "crush-quit") { CRUSH = null; return; /* href="#wrong"가 라우팅 */ }
+  if (act === "crush-ok") { crushPass(CRUSH.pile[0]); renderCrush(); return; }
+  if (act === "crush-again") {
+    crushWrong(CRUSH.pile[0]); // 질문 단위 틀린 횟수 +1
+    CRUSH.pile.push(CRUSH.pile.shift());
+    CRUSH.reveal = false; CRUSH.aiNote = ""; CRUSH.chips = null;
+    saveCrush();
+    renderCrush();
+    return;
+  }
+  if (act === "crush-resume") { CRUSH = loadCrush(); if (CRUSH) location.hash = "#crush"; return; }
+  if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
   if (act === "toggle-subject") {
     DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
     renderHome();
@@ -1397,7 +1473,11 @@ function onImportFile(e) {
 function render() {
   stopMic();
   if (location.hash === "#today") { renderSession(); return; }
-  if (location.hash === "#crush") { if (CRUSH) renderCrush(); else location.hash = "#wrong"; return; }
+  if (location.hash === "#crush") {
+    if (!CRUSH) CRUSH = loadCrush(); // 나갔다 돌아와도 이어서
+    if (CRUSH) renderCrush(); else location.hash = "#wrong";
+    return;
+  }
   if (location.hash === "#wrong") { SESSION = null; CRUSH = null; renderWrong(); return; }
   const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
   if (m) renderQuiz(decodeURIComponent(m[1]), !!m[2]);

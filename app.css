@@ -348,6 +348,9 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .wl-n { margin-left: auto; font-size: .74rem; color: var(--no); font-weight: 700; white-space: nowrap; }
 .wl-qs { margin: 6px 0 0; padding-left: 20px; font-size: .88rem; color: var(--ink); }
 .wl-qs li { padding: 2px 0; }
+.wl-qs li.qdone { color: var(--faint); }
+.wl-qn { font-size: .72rem; color: var(--no); font-weight: 700; margin-left: 6px; white-space: nowrap; }
+.wl-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; }
 .wl-noq { margin-top: 4px; font-size: .8rem; color: var(--faint); }
 
 /* 오답 뽀개기 드릴 */
