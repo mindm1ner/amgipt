@@ -750,17 +750,17 @@ function renderWrong() {
       const l = latest(id);
       let rqs = l && l.rq;
       if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
-      const qLine = qtext => {
+      // 질문별 틀린 횟수 = 태어난 계기(세션에서 1회 틀림) + 뽀개기에서 다시 쌓기 횟수
+      const qLine = (qtext, seed) => {
         const st = qstat(id + "|" + qtext);
         return `<li class="${st.ok ? "qdone" : ""}">${st.ok ? "✓ " : ""}${esc(qtext)}
-          ${st.w ? `<span class="wl-qn">${st.w}회 틀림</span>` : ""}</li>`;
+          <span class="wl-qn">${st.w + seed}회 틀림</span></li>`;
       };
       rows.push(`<div class="wl-card">
-        <div class="wl-head"><span class="wl-t">${esc(q.title)}${sub.hideHead ? "" : " · " + esc(String(sub.no))}</span>
-          <span class="wl-n">${wrongTimes(id)}회 틀림</span></div>
+        <div class="wl-head"><span class="wl-t">${esc(q.title)}${sub.hideHead ? "" : " · " + esc(String(sub.no))}</span></div>
         ${Array.isArray(rqs) && rqs.length
-          ? `<ol class="wl-qs">${rqs.map(r => qLine(r.q || "")).join("")}</ol>`
-          : `<ol class="wl-qs">${qLine(q.title + " 전체 인출")}</ol>`}
+          ? `<ol class="wl-qs">${rqs.map(r => qLine(r.q || "", 1)).join("")}</ol>`
+          : `<ol class="wl-qs">${qLine(q.title + " 전체 인출", wrongTimes(id))}</ol>`}
       </div>`);
     }));
     if (!rows.length) continue;
@@ -905,7 +905,7 @@ function renderCrush() {
     </div>
     <section class="q-card sess-card sub crush">
       <div class="sess-meta"><span>${esc(it.title)}</span>
-        ${qstat(crushKey(it)).w ? `<span class="lastmark m-X">이 질문 ${qstat(crushKey(it)).w}회 틀림</span>` : ""}</div>
+        <span class="lastmark m-X">이 질문 ${qstat(crushKey(it)).w + (it.groups ? wrongTimes(it.sid) : 1)}회 틀림</span></div>
       <div class="q-head"><span class="qno">${esc(it.q)}</span></div>
       ${inner}
     </section>`;
