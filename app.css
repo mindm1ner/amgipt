@@ -321,6 +321,16 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .focus-qs li { padding: 3px 0; }
 .dnote.next-q { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 8px; color: var(--sub); }
 
+/* 재학습 모드: 2연속 X 카드는 정답 먼저 읽고 가린 뒤 인출 */
+.relearn {
+  margin: 10px 0; padding: 14px 16px;
+  border: 1px dashed var(--nob); border-radius: 12px; background: var(--no-bg);
+}
+.relearn .rl-head { font-size: .84rem; color: var(--no); font-weight: 700; margin-bottom: 10px; }
+.relearn .rl-head .ico { width: 14px; height: 14px; }
+.relearn .rl-model { font-size: .92rem; margin-bottom: 12px; }
+.sub.relearning .sub-input, .sub.relearning .sub-actions { display: none; }
+
 /* 오답 탭: 영역별 접기 */
 .wrong-sec { margin: 12px 0; }
 .wrong-sec > summary {

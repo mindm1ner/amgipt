@@ -566,18 +566,28 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
     </div>`;
   }
+  // 재학습 모드: 2연속 몰랐던 카드는 인출 전에 정답을 먼저 읽고, 가린 뒤에 쓴다 (실패 반복 대신 재입력)
+  let relearnHtml = "";
+  if (sub.type === "essay" && subState(id).chronic) {
+    relearnHtml = `<div class="relearn">
+      <div class="rl-head">${ico("recall")} 두 번 연속 몰랐던 카드. 먼저 정답을 다시 읽고, 가린 다음 인출해요.</div>
+      <div class="rl-model md">${md(sub.answer)}</div>
+      <button class="btn primary" data-act="hide-relearn">다 읽었다, 가리고 인출</button>
+    </div>`;
+  }
   const gradeBtns = sub.type === "self"
     ? `<button class="btn primary" data-act="reveal">정답 보기</button>`
     : `<button class="btn primary" data-act="grade">채점하기</button>
        <button class="btn ghost" data-act="reveal">그냥 정답 보기</button>`;
   return `
-  <div class="sub" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}"${fg ? ' data-focus="1"' : ""}>
+  <div class="sub${relearnHtml ? " relearning" : ""}" data-sid="${esc(id)}" data-quiz="${esc(quiz.id)}" data-q="${qi}" data-s="${si}"${fg ? ' data-focus="1"' : ""}>
     ${sub.hideHead
       ? (dotsHtml(id) ? `<div class="sub-head">${dotsHtml(id)}</div>` : "")
       : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
         ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
     ${sub.prompt ? `<div class="sub-prompt md">${md(sub.prompt)}</div>` : ""}
     ${focusHtml}
+    ${relearnHtml}
     <div class="sub-input">${inputHtml}</div>
     <div class="sub-actions">${gradeBtns}</div>
     <div class="reveal"></div>
@@ -989,6 +999,12 @@ function onAppClick(e) {
   if (!subEl) return;
 
   if (act === "mic") { toggleMic(subEl, btn); return; }
+  if (act === "hide-relearn") {
+    subEl.querySelector(".relearn")?.remove();
+    subEl.classList.remove("relearning");
+    subEl.querySelector("textarea.answer")?.focus();
+    return;
+  }
   if (act === "full-sub") {
     const { quiz, q, sub } = findSub(subEl);
     FULL_OVERRIDE.add(subEl.dataset.sid);
