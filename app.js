@@ -784,7 +784,7 @@ function buildCrushItems(quizId) {
     let rqs = l && l.rq;
     if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
     if (Array.isArray(rqs) && rqs.length) {
-      for (const r of rqs) items.push({ title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [] });
+      for (const r of rqs) items.push({ title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
     } else {
       // AI 질문이 없는 오답: 카드 전체 인출로 (정답은 모범답안, 자기 판정)
       items.push({ title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], model: x.sub.answer });
@@ -806,20 +806,27 @@ function renderCrush() {
     return;
   }
   const it = CRUSH.pile[0];
-  const inner = CRUSH.reveal
-    ? `${CRUSH.lastVal ? `<div class="crush-mine">내 답: ${esc(CRUSH.lastVal)}</div>` : ""}
+  let inner;
+  if (CRUSH.checking) {
+    inner = `<div class="crush-mine">내 답: ${esc(CRUSH.lastVal)}</div>
+       <div class="ai-status">${ico("spark")} AI가 의미 포함 여부를 판정하는 중…</div>`;
+  } else if (CRUSH.reveal) {
+    inner = `${CRUSH.lastVal ? `<div class="crush-mine">내 답: ${esc(CRUSH.lastVal)}</div>` : ""}
+       ${CRUSH.aiNote ? `<div class="dnote"><span class="dm-miss">✗</span> ${esc(CRUSH.aiNote)}</div>` : ""}
        <div class="crush-ans">${it.k.length
          ? `<span class="lbl">정답</span> ${it.n ? `<b>${esc(it.n)}</b> · ` : ""}${it.k.map(esc).join(" · ")}`
          : `<div class="model"><span class="lbl">모범답안</span><div class="md">${md(it.model || "")}</div></div>`}</div>
        <div class="sub-actions">
          <button class="btn" data-act="crush-ok">맞은 걸로</button>
          <button class="btn primary" data-act="crush-again">틀림, 다시 쌓기</button>
-       </div>`
-    : `<div class="ta-wrap">
+       </div>`;
+  } else {
+    inner = `<div class="ta-wrap">
          <textarea class="answer" id="crushTa" placeholder="답하고 확인"></textarea>
          ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
        </div>
        <div class="sub-actions"><button class="btn primary" data-act="crush-check">확인</button></div>`;
+  }
   $("#app").innerHTML = `
     <div class="topbar">
       <a class="back" href="#wrong" data-act="crush-quit">✕ 종료</a>
@@ -1162,13 +1169,31 @@ function onAppClick(e) {
     const ta = document.getElementById("crushTa");
     const val = ta ? ta.value : "";
     const hit = it.k.some(v => norm(v) !== "" && norm(val).includes(norm(v)));
-    if (hit) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; }
-    else { CRUSH.reveal = true; CRUSH.lastVal = val.trim(); }
+    if (hit) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; }
+    else if (aiOn() && it.k.length && norm(val) !== "") {
+      // 문자로는 못 찾음 → AI가 의미 포함 여부를 판정 (맞으면 자동 통과)
+      CRUSH.checking = true; CRUSH.lastVal = val.trim();
+      const snap = it;
+      aiJudgeKeywords(it.title, it.model || "", [it.n || it.q], [], val).then(d => {
+        if (!CRUSH || CRUSH.pile[0] !== snap) return; // 그새 종료·이동했으면 무시
+        const r = (d.results || [])[0];
+        const verdict = r ? (r.verdict || (r.found ? "good" : "missed")) : "missed";
+        CRUSH.checking = false;
+        if (verdict === "good") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; }
+        else { CRUSH.reveal = true; CRUSH.aiNote = (r && r.note) || ""; }
+        renderCrush();
+      }).catch(() => {
+        if (!CRUSH || CRUSH.pile[0] !== snap) return;
+        CRUSH.checking = false; CRUSH.reveal = true; CRUSH.aiNote = "";
+        renderCrush();
+      });
+    }
+    else { CRUSH.reveal = true; CRUSH.lastVal = val.trim(); CRUSH.aiNote = ""; }
     renderCrush();
     return;
   }
-  if (act === "crush-ok") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; renderCrush(); return; }
-  if (act === "crush-again") { CRUSH.pile.push(CRUSH.pile.shift()); CRUSH.reveal = false; renderCrush(); return; }
+  if (act === "crush-ok") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; renderCrush(); return; }
+  if (act === "crush-again") { CRUSH.pile.push(CRUSH.pile.shift()); CRUSH.reveal = false; CRUSH.aiNote = ""; renderCrush(); return; }
   if (act === "crush-quit") { CRUSH = null; return; /* href="#wrong"가 라우팅 */ }
   if (act === "toggle-subject") {
     DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
