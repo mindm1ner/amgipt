@@ -318,7 +318,10 @@ textarea.answer { resize: vertical; min-height: 74px; }
   border-left: 2px solid var(--accent); background: var(--accent-soft);
   font-size: .92rem; color: var(--ink);
 }
-.focus-qs li { padding: 3px 0; }
+.focus-qs li { padding: 6px 0; }
+.focus-qs .fq-q { margin-bottom: 6px; }
+.focus-qs textarea.answer { min-height: 46px; background: var(--card); }
+.sub.relearning .focus-qs .ta-wrap { display: none; }
 .dnote.next-q { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 8px; color: var(--sub); }
 
 /* 재학습 모드: 2연속 X 카드는 정답 먼저 읽고 가린 뒤 인출 */
@@ -333,6 +336,32 @@ textarea.answer { resize: vertical; min-height: 74px; }
 
 /* 오답 탭: 틀린 횟수 필터 */
 .wfilter { display: flex; gap: 8px; margin: 14px 0 4px; flex-wrap: wrap; }
+
+/* 오답 브라우징 (질문 목록만) */
+.ws-body > .btn { margin: 2px 0 10px; }
+.wl-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 10px;
+}
+.wl-head { display: flex; align-items: baseline; gap: 10px; }
+.wl-t { font-weight: 700; }
+.wl-n { margin-left: auto; font-size: .74rem; color: var(--no); font-weight: 700; white-space: nowrap; }
+.wl-qs { margin: 6px 0 0; padding-left: 20px; font-size: .88rem; color: var(--ink); }
+.wl-qs li { padding: 2px 0; }
+.wl-noq { margin-top: 4px; font-size: .8rem; color: var(--faint); }
+
+/* 오답 뽀개기 드릴 */
+.crush .q-head { margin-top: 4px; }
+.crush-mine {
+  margin: 8px 0; padding: 8px 12px; border-left: 2px solid var(--line);
+  font-size: .88rem; color: var(--sub); white-space: pre-line;
+}
+.crush-ans {
+  margin: 8px 0 4px; padding: 12px 14px;
+  border: 1px solid var(--okb); background: var(--ok-bg); border-radius: 12px;
+  font-size: .95rem;
+}
+.crush-ans .lbl { font-size: .74rem; font-weight: 800; color: var(--ok); margin-right: 8px; }
 
 /* 오답 탭: 영역별 접기 */
 .wrong-sec { margin: 12px 0; }

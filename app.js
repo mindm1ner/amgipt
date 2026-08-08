@@ -247,7 +247,8 @@ function stopMic() {
 }
 function toggleMic(subEl, btn) {
   if (MIC) { stopMic(); return; }
-  const ta = subEl.querySelector("textarea.answer");
+  // 질문별 답변 칸이 여러 개일 수 있으니, 버튼이 붙은 칸을 우선한다
+  const ta = (btn.closest(".ta-wrap") || subEl).querySelector("textarea.answer");
   if (!ta) return;
   const rec = new SR();
   rec.lang = "ko-KR";
@@ -543,13 +544,22 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   const id = subId(quiz, q, sub);
   const fg = sub.type === "essay" ? focusGroupsFor(id, sub) : null;
   let focusHtml = "";
+  let fqMode = false; // 질문별 답변 칸 모드 (본문 입력칸은 숨긴다)
   if (fg) {
     let rqs = (latest(id) || {}).rq;
     if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }]; // 구형(문자열 1개) 호환
     let bodyHtml;
     if (Array.isArray(rqs) && rqs.length) {
-      // AI가 지난 채점에서 놓친 것마다 하나씩 만든 재질문 목록
-      bodyHtml = `<ol class="focus-qs">${rqs.map(r => `<li>${esc(r.q || "")}</li>`).join("")}</ol>`;
+      // AI가 놓친 것마다 하나씩 만든 재질문: 질문마다 답변 칸을 붙인다
+      fqMode = true;
+      bodyHtml = `<ol class="focus-qs">${rqs.map((r, i) => `
+        <li>
+          <div class="fq-q">${esc(r.q || "")}</div>
+          <div class="ta-wrap">
+            <textarea class="answer" data-fq="${i}" placeholder="이 질문만 짧게">${esc(draftGet(id + "#fq" + i))}</textarea>
+            ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
+          </div>
+        </li>`).join("")}</ol>`;
     } else {
       // 재질문이 없으면 폴백: "주제: 내용" 이름은 주제만 물음표로, 없으면 개수만 (스포일러 방지)
       const named = fg.map(g => g.name.includes(":") ? g.name.split(":")[0].trim() + "?" : null).filter(Boolean);
@@ -567,7 +577,7 @@ function subBlockHtml(quiz, q, sub, qi, si) {
     inputHtml = sub.parts.map((p, pi) => `
       <div class="part-row"><span class="plabel">${esc(p.label)}</span>
       <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
-  } else if (sub.type === "essay") {
+  } else if (sub.type === "essay" && !fqMode) {
     const ph = fg ? "놓쳤던 포인트만 짧게" : (sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)");
     inputHtml = `<div class="ta-wrap">
       <textarea class="answer" placeholder="${esc(ph)}">${esc(draftGet(id))}</textarea>
@@ -670,19 +680,32 @@ function renderWrong() {
   const sections = [];
   let count = 0;
   for (const quiz of DATA) {
-    const cards = quizCardsHtml(quiz, true, wfMatch);
-    if (!cards) continue;
-    let n = 0;
+    // 브라우징은 질문 목록만 (풀이는 뽀개기에서)
+    const rows = [];
     quiz.questions.forEach(q => q.subs.forEach(sub => {
       const id = subId(quiz, q, sub);
-      if (isWeak(id) && wfMatch(id)) n++;
+      if (!isWeak(id) || !wfMatch(id)) return;
+      const l = latest(id);
+      let rqs = l && l.rq;
+      if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
+      rows.push(`<div class="wl-card">
+        <div class="wl-head"><span class="wl-t">${esc(q.title)}${sub.hideHead ? "" : " · " + esc(String(sub.no))}</span>
+          <span class="wl-n">${wrongTimes(id)}회 틀림</span></div>
+        ${Array.isArray(rqs) && rqs.length
+          ? `<ol class="wl-qs">${rqs.map(r => `<li>${esc(r.q || "")}</li>`).join("")}</ol>`
+          : `<div class="wl-noq">아직 AI 질문 없음, 뽀개기에서 전체 인출로 나와요</div>`}
+      </div>`);
     }));
-    count += n;
+    if (!rows.length) continue;
+    count += rows.length;
     sections.push(
       `<details class="wrong-sec">
         <summary><span class="ws-name">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}</span>
-          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${n}개</span></summary>
-        ${cards}
+          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${rows.length}개</span></summary>
+        <div class="ws-body">
+          <button class="btn primary" data-act="crush-start" data-quiz="${esc(quiz.id)}">${ico("bolt")} 오답 뽀개기 시작</button>
+          ${rows.join("")}
+        </div>
       </details>`);
   }
   // 영역이 하나뿐이면 바로 펼쳐둔다
@@ -696,6 +719,68 @@ function renderWrong() {
     <div class="wfilter">${filters.map(([f, label]) =>
       `<button class="nt${WRONG_FILTER === f ? " on" : ""}" data-act="wrong-filter" data-f="${f}">${label}</button>`).join("")}</div>
     ${sections.join("") || '<div class="empty">여기 해당하는 오답이 없어요.</div>'}`;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 오답 뽀개기 (퀴즐렛식 드릴: 한 질문씩, 틀리면 더미 맨 뒤로, 다 맞출 때까지) ---------- */
+let CRUSH = null;
+function buildCrushItems(quizId) {
+  const items = [];
+  for (const x of allSubs()) {
+    if (x.quiz.id !== quizId || !isWeak(x.id) || !wfMatch(x.id)) continue;
+    const l = latest(x.id);
+    let rqs = l && l.rq;
+    if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
+    if (Array.isArray(rqs) && rqs.length) {
+      for (const r of rqs) items.push({ title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [] });
+    } else {
+      // AI 질문이 없는 오답: 카드 전체 인출로 (정답은 모범답안, 자기 판정)
+      items.push({ title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], model: x.sub.answer });
+    }
+  }
+  return items;
+}
+function renderCrush() {
+  if (!CRUSH) { location.hash = "#wrong"; return; }
+  if (!CRUSH.pile.length) {
+    $("#app").innerHTML = `
+      <div class="checkpoint">
+        <h2>${ico("check")} 오답 뽀개기 완료</h2>
+        <p class="cp-goal">${CRUSH.total}문제를 전부 맞혔어요.</p>
+        <p class="cp-goal">뽀개기는 연습이라 판정 기록은 그대로예요. 세션이나 카드 채점에서 확정하면 오답에서 빠져요.</p>
+        <div class="cp-actions"><a class="btn primary big" href="#wrong" data-act="crush-quit">오답으로 돌아가기</a></div>
+      </div>`;
+    window.scrollTo(0, 0);
+    return;
+  }
+  const it = CRUSH.pile[0];
+  const inner = CRUSH.reveal
+    ? `${CRUSH.lastVal ? `<div class="crush-mine">내 답: ${esc(CRUSH.lastVal)}</div>` : ""}
+       <div class="crush-ans">${it.k.length
+         ? `<span class="lbl">정답</span> ${it.n ? `<b>${esc(it.n)}</b> · ` : ""}${it.k.map(esc).join(" · ")}`
+         : `<div class="model"><span class="lbl">모범답안</span><div class="md">${md(it.model || "")}</div></div>`}</div>
+       <div class="sub-actions">
+         <button class="btn" data-act="crush-ok">맞은 걸로</button>
+         <button class="btn primary" data-act="crush-again">틀림, 다시 쌓기</button>
+       </div>`
+    : `<div class="ta-wrap">
+         <textarea class="answer" id="crushTa" placeholder="답하고 확인"></textarea>
+         ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
+       </div>
+       <div class="sub-actions"><button class="btn primary" data-act="crush-check">확인</button></div>`;
+  $("#app").innerHTML = `
+    <div class="topbar">
+      <a class="back" href="#wrong" data-act="crush-quit">✕ 종료</a>
+      <div class="sessbar"><div class="sessbar-fill" style="width:${CRUSH.done / CRUSH.total * 100}%"></div></div>
+      <span class="prog">맞춘 ${CRUSH.done}/${CRUSH.total} · 남은 ${CRUSH.pile.length}</span>
+    </div>
+    <section class="q-card sess-card sub crush">
+      <div class="sess-meta"><span>${esc(it.title)}</span></div>
+      <div class="q-head"><span class="qno">${esc(it.q)}</span></div>
+      ${inner}
+    </section>`;
+  const ta = document.getElementById("crushTa");
+  if (ta) ta.focus();
   window.scrollTo(0, 0);
 }
 
@@ -901,9 +986,27 @@ function showReveal(subEl, graded) {
       return `<span class="kw ${flags[i] ? "hit" : "miss"}" data-act="kw-toggle" data-name="${esc(nm)}">${flags[i] ? "✓" : "✗"} ${esc(nm)}</span>`;
     }).join("") + "</div>";
   } else if (graded && sub.type === "essay") {
-    const input = subEl.querySelector("textarea.answer").value;
-    const groups = effGroups(subEl, sub); // 집중 인출이면 놓쳤던 포인트만 채점
-    const flags = judgeEssay(input, groups);
+    // 질문별 답변 칸 모드: 각 답변을 그 질문의 키워드로만 1:1 채점
+    const fqEls = [...subEl.querySelectorAll("textarea.answer[data-fq]")];
+    let input, groups, flags;
+    if (fqEls.length) {
+      const l = latest(id);
+      const rqs = Array.isArray(l && l.rq) ? l.rq : [];
+      groups = rqs.map((r, i) => ({
+        name: r.n || "질문 " + (i + 1),
+        variants: (Array.isArray(r.k) && r.k.length) ? r.k : []
+      }));
+      flags = groups.map((g, i) =>
+        g.variants.length ? judgeEssay(fqEls[i] ? fqEls[i].value : "", [g])[0] : false);
+      // 전부 빈칸이면 AI 판정도 건너뛴다 (input이 빈 문자열이면 아래 조건이 걸러줌)
+      input = fqEls.some(t => norm(t.value) !== "")
+        ? fqEls.map((t, i) => `${i + 1}) ${t.value.trim() || "(무응답)"}`).join("\n")
+        : "";
+    } else {
+      input = subEl.querySelector("textarea.answer").value;
+      groups = effGroups(subEl, sub); // 집중 인출이면 놓쳤던 포인트만 채점
+      flags = judgeEssay(input, groups);
+    }
     suggest = suggestFrom(flags);
     judgeHtml = '<div class="kw-chips">' + groups.map((g, i) =>
       `<span class="kw ${flags[i] ? "hit" : "miss"}" data-g="${i}" data-act="kw-toggle" data-name="${esc(g.name)}">${flags[i] ? "✓" : "✗"} ${esc(g.name)}</span>`).join("") + "</div>";
@@ -995,6 +1098,28 @@ function onAppClick(e) {
     return;
   }
   if (act === "wrong-filter") { WRONG_FILTER = btn.dataset.f; renderWrong(); return; }
+  if (act === "crush-start") {
+    e.preventDefault();
+    const items = buildCrushItems(btn.dataset.quiz);
+    if (!items.length) return;
+    CRUSH = { pile: items, total: items.length, done: 0, reveal: false, lastVal: "" };
+    location.hash = "#crush";
+    return;
+  }
+  if (act === "crush-check") {
+    stopMic();
+    const it = CRUSH.pile[0];
+    const ta = document.getElementById("crushTa");
+    const val = ta ? ta.value : "";
+    const hit = it.k.some(v => norm(v) !== "" && norm(val).includes(norm(v)));
+    if (hit) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; }
+    else { CRUSH.reveal = true; CRUSH.lastVal = val.trim(); }
+    renderCrush();
+    return;
+  }
+  if (act === "crush-ok") { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; renderCrush(); return; }
+  if (act === "crush-again") { CRUSH.pile.push(CRUSH.pile.shift()); CRUSH.reveal = false; renderCrush(); return; }
+  if (act === "crush-quit") { CRUSH = null; return; /* href="#wrong"가 라우팅 */ }
   if (act === "toggle-subject") {
     DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
     renderHome();
@@ -1126,7 +1251,8 @@ function onImportFile(e) {
 function render() {
   stopMic();
   if (location.hash === "#today") { renderSession(); return; }
-  if (location.hash === "#wrong") { SESSION = null; renderWrong(); return; }
+  if (location.hash === "#crush") { if (CRUSH) renderCrush(); else location.hash = "#wrong"; return; }
+  if (location.hash === "#wrong") { SESSION = null; CRUSH = null; renderWrong(); return; }
   const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
   if (m) renderQuiz(decodeURIComponent(m[1]), !!m[2]);
   else { SESSION = null; renderHome(); }
@@ -1140,7 +1266,9 @@ document.addEventListener("input", e => {
   const subEl = t.closest(".sub");
   if (!subEl) return;
   const id = subEl.dataset.sid;
-  const key = t.dataset.part !== undefined ? id + "#" + t.dataset.part : id;
+  if (!id) return; // 뽀개기 드릴 입력칸은 초안 저장 안 함
+  const key = t.dataset.part !== undefined ? id + "#" + t.dataset.part
+    : t.dataset.fq !== undefined ? id + "#fq" + t.dataset.fq : id;
   draftSet(key, t.value);
 });
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
