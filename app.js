@@ -1293,9 +1293,10 @@ function onAppClick(e) {
         if (verdict === "good") crushPass(snap);
         else { CRUSH.reveal = true; CRUSH.aiNote = (r && r.note) || ""; }
         renderCrush();
-      }).catch(() => {
+      }).catch(err => {
         if (!CRUSH || CRUSH.pile[0] !== snap) return;
-        CRUSH.checking = false; CRUSH.reveal = true; CRUSH.aiNote = "";
+        CRUSH.checking = false; CRUSH.reveal = true;
+        CRUSH.aiNote = "AI 판정 실패(" + (err && err.message ? err.message : "오류") + "). 직접 판정해 주세요.";
         renderCrush();
       });
     }
