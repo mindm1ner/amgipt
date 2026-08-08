@@ -752,12 +752,16 @@ function questionEntries(quizId) {
   }
   return out;
 }
-function qaAnswerText(it) {
-  const parts = [];
-  if (it.n) parts.push(it.n);
-  if (it.k && it.k.length) parts.push(it.k.join(" · "));
-  if (!parts.length && it.groups) parts.push(it.groups.map(g => g.name).join(" · "));
-  return parts.join(" · ") || (it.model || "").split("\n")[0].slice(0, 90);
+function qaAnswerHtml(it) {
+  // 항목별 한 줄씩: 그룹 카드면 그룹 이름 목록, 재질문이면 대상+키워드
+  const lines = [];
+  if (it.n) lines.push(it.n);
+  if (it.k && it.k.length) lines.push(it.k.join(" · "));
+  if (!lines.length && it.groups) for (const g of it.groups) lines.push(g.name);
+  if (!lines.length) lines.push((it.model || "").split("\n")[0].slice(0, 90));
+  return lines.length > 1
+    ? lines.map(l => `<div>· ${esc(l)}</div>`).join("")
+    : esc(lines[0]);
 }
 function renderWrong() {
   const allEnts = questionEntries(null);
@@ -769,7 +773,7 @@ function renderWrong() {
     <tr class="${it.ok ? "qdone" : ""}">
       <td class="qa-c"><input type="checkbox" class="qsel" data-key="${esc(it.key)}"></td>
       <td class="qa-q">${it.ok ? "✓ " : ""}${esc(it.q)} <span class="wl-qn">${it.cnt}회 틀림</span></td>
-      <td class="qa-a"><span class="veil" data-act="qa-toggle">${esc(qaAnswerText(it))}</span></td>
+      <td class="qa-a"><span class="veil" data-act="qa-toggle">${qaAnswerHtml(it)}</span></td>
     </tr>`;
 
   const sections = [];

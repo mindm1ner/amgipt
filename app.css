@@ -357,8 +357,8 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .qa { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .qa { table-layout: fixed; }
 .qa td { padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: top; }
-.qa-q, .qa-a .veil { word-break: break-word; overflow-wrap: anywhere; white-space: normal; }
-.crush-ans, .crush-mine, .crush .q-head .qno { word-break: break-word; overflow-wrap: anywhere; }
+.qa-q, .qa-a .veil { word-break: keep-all; overflow-wrap: break-word; white-space: normal; }
+.crush-ans, .crush-mine, .crush .q-head .qno { word-break: keep-all; overflow-wrap: break-word; }
 .qa tr:first-child td { border-top: none; }
 .qa tr.qdone .qa-q { color: var(--faint); }
 .qa-c { width: 28px; }
