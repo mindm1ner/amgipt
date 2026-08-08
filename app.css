@@ -331,6 +331,9 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .relearn .rl-model { font-size: .92rem; margin-bottom: 12px; }
 .sub.relearning .sub-input, .sub.relearning .sub-actions { display: none; }
 
+/* 오답 탭: 틀린 횟수 필터 */
+.wfilter { display: flex; gap: 8px; margin: 14px 0 4px; flex-wrap: wrap; }
+
 /* 오답 탭: 영역별 접기 */
 .wrong-sec { margin: 12px 0; }
 .wrong-sec > summary {

@@ -603,11 +603,14 @@ function subBlockHtml(quiz, q, sub, qi, si) {
 }
 
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
-function quizCardsHtml(quiz, weakOnly) {
+function quizCardsHtml(quiz, weakOnly, pred) {
   return quiz.questions.map((q, qi) => {
     const subs = q.subs
       .map((sub, si) => ({ sub, si }))
-      .filter(x => !weakOnly || isWeak(subId(quiz, q, x.sub)));
+      .filter(x => {
+        const id = subId(quiz, q, x.sub);
+        return (!weakOnly || isWeak(id)) && (!pred || pred(id));
+      });
     if (!subs.length) return "";
 
     const subsHtml = subs.map(({ sub, si }) => subBlockHtml(quiz, q, sub, qi, si)).join("");
@@ -647,18 +650,38 @@ function renderQuiz(quizId, weakOnly) {
 }
 
 /* ---------- 오답 모아보기 ---------- */
+let WRONG_FILTER = "all"; // all | 1 | 2 | 3(=3번 이상)
+function wrongTimes(id) { return history(id).filter(r => r.r !== "O").length; }
+function wfMatch(id) {
+  if (WRONG_FILTER === "all") return true;
+  const n = wrongTimes(id);
+  return WRONG_FILTER === "3" ? n >= 3 : n === +WRONG_FILTER;
+}
 function renderWrong() {
+  // 틀린 횟수 분포 (필터 배지용)
+  const weakIds = allSubs().map(x => x.id).filter(isWeak);
+  const dist = { 1: 0, 2: 0, 3: 0 };
+  for (const id of weakIds) {
+    const n = wrongTimes(id);
+    dist[n >= 3 ? 3 : n] = (dist[n >= 3 ? 3 : n] || 0) + 1;
+  }
+  const filters = [["all", `전체 ${weakIds.length}`], ["1", `1번 ${dist[1] || 0}`], ["2", `2번 ${dist[2] || 0}`], ["3", `3번+ ${dist[3] || 0}`]];
+
   const sections = [];
   let count = 0;
   for (const quiz of DATA) {
-    const cards = quizCardsHtml(quiz, true);
+    const cards = quizCardsHtml(quiz, true, wfMatch);
     if (!cards) continue;
-    const s = quizStats(quiz);
-    count += s.weak;
+    let n = 0;
+    quiz.questions.forEach(q => q.subs.forEach(sub => {
+      const id = subId(quiz, q, sub);
+      if (isWeak(id) && wfMatch(id)) n++;
+    }));
+    count += n;
     sections.push(
       `<details class="wrong-sec">
         <summary><span class="ws-name">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}</span>
-          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${s.weak}개</span></summary>
+          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${n}개</span></summary>
         ${cards}
       </details>`);
   }
@@ -670,7 +693,9 @@ function renderWrong() {
       <span class="ttl">오답 모아보기</span>
       <span class="prog">${count}개</span>
     </div>
-    ${sections.join("") || '<div class="empty">아직 오답이 없어요. 최근 판정이 부분이나 몰랐다인 카드가 여기 모여요.</div>'}`;
+    <div class="wfilter">${filters.map(([f, label]) =>
+      `<button class="nt${WRONG_FILTER === f ? " on" : ""}" data-act="wrong-filter" data-f="${f}">${label}</button>`).join("")}</div>
+    ${sections.join("") || '<div class="empty">여기 해당하는 오답이 없어요.</div>'}`;
   window.scrollTo(0, 0);
 }
 
@@ -969,6 +994,7 @@ function onAppClick(e) {
     renderSession();
     return;
   }
+  if (act === "wrong-filter") { WRONG_FILTER = btn.dataset.f; renderWrong(); return; }
   if (act === "toggle-subject") {
     DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
     renderHome();
