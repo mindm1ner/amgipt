@@ -6,14 +6,16 @@ const DATA = window.DAJIGI_DATA || [];
 const KEY = "dajigi_v1";
 const AI_OFF_NAME = "dajigi_ai_off";
 /* AI 채점: 암기PT 전용 Supabase 프로젝트 (온고지신과 완전 분리, Gemini 키는 서버 시크릿) */
-const AI_FN_URL = "https://fqofdlwnzdoqabcnolbz.supabase.co/functions/v1/amgipt-grade";
+const SUPA_URL = "https://fqofdlwnzdoqabcnolbz.supabase.co";
+const AI_FN_URL = SUPA_URL + "/functions/v1/amgipt-grade";
 const AI_FN_KEY = "sb_publishable_cyPOjYPJ4xuWquF0M-O52g_eY4nQ7F5";
+const EMAIL_NAME = "dajigi_email";
 const DAY = 24 * 60 * 60 * 1000;
 
 /* ---------- 클라우드 동기화 ----------
    기록이 브라우저에서 지워져도(캐시 삭제, iOS 정리) 안 날아가게 서버에 자동 백업.
    기기마다 무작위 동기화 코드가 생기고, 그 코드가 곧 계정이다. 다른 기기에 코드를 넣으면 기록이 합쳐진다. */
-const SYNC_URL = "https://fqofdlwnzdoqabcnolbz.supabase.co/functions/v1/amgipt-sync";
+const SYNC_URL = SUPA_URL + "/functions/v1/amgipt-sync";
 const SYNC_KEY_NAME = "dajigi_sync_key";
 let SYNC_STATE = "wait"; // wait | ok | fail
 let pushTimer = null;
@@ -73,10 +75,39 @@ async function pullAndMerge() {
 }
 function syncFootText() {
   const n = Object.values(S.records).reduce((a, h) => a + h.length, 0);
-  const st = SYNC_STATE === "ok" ? "클라우드에 자동 백업됨"
+  const em = localStorage.getItem(EMAIL_NAME);
+  const st = SYNC_STATE === "ok" ? (em ? em + " 계정에 백업됨" : "클라우드에 자동 백업됨")
     : SYNC_STATE === "fail" ? "클라우드 연결 안 됨, 이 브라우저에만 저장"
     : "클라우드 동기화 중";
   return `기록 ${n}건 · ${st}`;
+}
+
+/* ---------- 이메일 로그인 (Supabase Auth 매직링크) ----------
+   목적은 세션 유지가 아니라 기기 간 같은 계정 키를 얻는 것.
+   링크를 눌러 돌아오면 user.id로 동기화 키를 "u-{id}"로 교체한다. 폰에서도 같은 이메일이면 같은 기록. */
+async function sendLoginLink(email) {
+  const res = await fetch(SUPA_URL + "/auth/v1/otp", {
+    method: "POST",
+    headers: { "content-type": "application/json", apikey: AI_FN_KEY },
+    body: JSON.stringify({ email, create_user: true })
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+async function handleAuthReturn() {
+  const m = location.hash.match(/access_token=([^&]+)/);
+  if (!m) return;
+  const token = decodeURIComponent(m[1]);
+  history.replaceState(null, "", location.pathname); // 주소창의 토큰 제거
+  try {
+    const r = await fetch(SUPA_URL + "/auth/v1/user", {
+      headers: { apikey: AI_FN_KEY, Authorization: "Bearer " + token }
+    });
+    const u = await r.json();
+    if (u && u.id) {
+      localStorage.setItem(SYNC_KEY_NAME, "u-" + u.id);
+      if (u.email) localStorage.setItem(EMAIL_NAME, u.email);
+    }
+  } catch { /* 실패해도 기존 키로 계속 */ }
 }
 function updateSyncFoot() {
   const el = document.getElementById("syncfoot");
@@ -1066,6 +1097,28 @@ function onAppClick(e) {
     navigator.clipboard.writeText(syncKey()).then(() => { btn.textContent = "복사됨"; });
     return;
   }
+  if (act === "send-login") {
+    const em = document.getElementById("loginEmail").value.trim();
+    const msg = document.getElementById("loginMsg");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { if (msg) msg.textContent = "이메일 주소를 확인해 주세요."; return; }
+    btn.disabled = true;
+    sendLoginLink(em).then(() => {
+      if (msg) msg.textContent = "메일을 보냈어요. 로그인할 기기에서 메일의 링크를 눌러주세요.";
+    }).catch(() => {
+      btn.disabled = false;
+      if (msg) msg.textContent = "메일 발송에 실패했어요. 잠시 뒤 다시 시도해 주세요.";
+    });
+    return;
+  }
+  if (act === "logout") {
+    localStorage.removeItem(EMAIL_NAME);
+    makeSyncKey(); // 새 익명 코드 발급 (기록은 이 기기에 그대로, 계정 백업본도 서버에 남음)
+    SYNC_STATE = "wait";
+    $(".sheeto")?.classList.remove("show");
+    updateSyncFoot();
+    pushNow();
+    return;
+  }
   if (act === "link-key") {
     const v = document.getElementById("linkKey").value.trim();
     if (v.length < 12) { alert("동기화 코드가 너무 짧아요."); return; }
@@ -1216,14 +1269,25 @@ function onAppClick(e) {
 function openSyncSheet() {
   const o = $(".sheeto");
   if (!o) return;
+  const em = localStorage.getItem(EMAIL_NAME);
+  const loginHtml = em
+    ? `<p class="sync-p">로그인됨: <b>${esc(em)}</b>. 다른 기기에서도 같은 이메일로 로그인하면 기록이 이어져요.</p>
+       <button class="btn ghost" data-act="logout">이 기기에서 로그아웃</button>`
+    : `<p class="sync-p">이메일로 로그인하면 폰·노트북이 같은 기록을 써요. 비밀번호 없이 메일의 링크만 누르면 돼요.</p>
+       <div class="sync-link"><input id="loginEmail" type="email" placeholder="이메일 주소" autocomplete="email">
+         <button class="btn primary" data-act="send-login">로그인 링크 보내기</button></div>
+       <p class="sync-p" id="loginMsg"></p>`;
   o.querySelector(".sheet").innerHTML = `
     <div class="grab"></div>
-    <h3>클라우드 동기화<small>기록이 서버에 자동 백업돼요</small></h3>
-    <p class="sync-p">이 기기의 동기화 코드. 다른 기기의 암기PT에 이 코드를 넣으면 기록이 합쳐져요.</p>
-    <div class="sync-key"><code>${esc(syncKey())}</code><button class="btn" data-act="copy-key">복사</button></div>
-    <p class="sync-p">다른 기기의 코드로 연결하기</p>
-    <div class="sync-link"><input id="linkKey" placeholder="amgipt-..." autocomplete="off">
-      <button class="btn primary" data-act="link-key">연결</button></div>`;
+    <h3>계정과 동기화<small>기록이 서버에 자동 백업돼요</small></h3>
+    ${loginHtml}
+    <details class="sync-adv"><summary>코드로 직접 연결 (로그인 없이)</summary>
+      <p class="sync-p">이 기기의 동기화 코드. 다른 기기에 넣으면 기록이 합쳐져요.</p>
+      <div class="sync-key"><code>${esc(syncKey())}</code><button class="btn" data-act="copy-key">복사</button></div>
+      <p class="sync-p">다른 기기의 코드로 연결하기</p>
+      <div class="sync-link"><input id="linkKey" placeholder="amgipt-..." autocomplete="off">
+        <button class="btn primary" data-act="link-key">연결</button></div>
+    </details>`;
   o.classList.add("show");
 }
 
@@ -1276,6 +1340,9 @@ document.addEventListener("change", e => { if (e.target.id === "importFile") onI
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && pushTimer) pushNow();
 });
-render();
-if (!syncKey()) makeSyncKey();
-pullAndMerge();
+(async () => {
+  await handleAuthReturn(); // 매직링크로 돌아온 경우 계정 키로 교체
+  render();
+  if (!syncKey()) makeSyncKey();
+  pullAndMerge();
+})();

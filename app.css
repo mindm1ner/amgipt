@@ -390,8 +390,10 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .sync-link { display: flex; gap: 8px; }
 .sync-link input {
   flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--card); color: var(--fg); font-size: .85rem;
+  background: var(--card); color: var(--ink); font-size: .85rem;
 }
+.sync-adv { margin-top: 16px; }
+.sync-adv > summary { font-size: .8rem; color: var(--sub); cursor: pointer; }
 
 .ta-wrap { position: relative; }
 .ta-wrap textarea.answer { padding-right: 48px; }
