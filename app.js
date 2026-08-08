@@ -5,15 +5,15 @@
 const DATA = window.DAJIGI_DATA || [];
 const KEY = "dajigi_v1";
 const AI_OFF_NAME = "dajigi_ai_off";
-/* AI 채점: 암기PT 전용 Edge Function (온고지신과 분리, 키는 서버 시크릿) */
-const AI_FN_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/amgipt-grade";
-const AI_FN_KEY = "sb_publishable_0WY4_2tj6O83jVKgWW80rA_G-KIl3su";
+/* AI 채점: 암기PT 전용 Supabase 프로젝트 (온고지신과 완전 분리, Gemini 키는 서버 시크릿) */
+const AI_FN_URL = "https://fqofdlwnzdoqabcnolbz.supabase.co/functions/v1/amgipt-grade";
+const AI_FN_KEY = "sb_publishable_cyPOjYPJ4xuWquF0M-O52g_eY4nQ7F5";
 const DAY = 24 * 60 * 60 * 1000;
 
 /* ---------- 클라우드 동기화 ----------
    기록이 브라우저에서 지워져도(캐시 삭제, iOS 정리) 안 날아가게 서버에 자동 백업.
    기기마다 무작위 동기화 코드가 생기고, 그 코드가 곧 계정이다. 다른 기기에 코드를 넣으면 기록이 합쳐진다. */
-const SYNC_URL = "https://lyculuojctqhsmhuqrdt.supabase.co/functions/v1/amgipt-sync";
+const SYNC_URL = "https://fqofdlwnzdoqabcnolbz.supabase.co/functions/v1/amgipt-sync";
 const SYNC_KEY_NAME = "dajigi_sync_key";
 let SYNC_STATE = "wait"; // wait | ok | fail
 let pushTimer = null;
