@@ -1213,7 +1213,7 @@ function onAppClick(e) {
     }
     const hit = it.k.some(v => norm(v) !== "" && norm(val).includes(norm(v)));
     if (hit) { CRUSH.done++; CRUSH.pile.shift(); CRUSH.reveal = false; CRUSH.aiNote = ""; }
-    else if (aiOn() && it.k.length && norm(val) !== "") {
+    else if (aiOn() && norm(val) !== "") { // 키워드가 없는 구형 재질문도 질문+모범답안만으로 AI 판정
       // 문자로는 못 찾음 → AI가 의미 포함 여부를 판정 (맞으면 자동 통과)
       CRUSH.checking = true; CRUSH.lastVal = val.trim();
       const snap = it;
