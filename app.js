@@ -722,65 +722,89 @@ function renderQuiz(quizId, weakOnly) {
 }
 
 /* ---------- 오답 모아보기 ---------- */
-let WRONG_FILTER = "all"; // all | 1 | 2 | 3(=3번 이상)
+let WRONG_FILTER = "all"; // all | 1 | 2 | 3(=3번 이상), 질문 단위 틀린 횟수 기준
 function wrongTimes(id) { return history(id).filter(r => r.r !== "O").length; }
-function wfMatch(id) {
+function wfMatchN(n) {
   if (WRONG_FILTER === "all") return true;
-  const n = wrongTimes(id);
   return WRONG_FILTER === "3" ? n >= 3 : n === +WRONG_FILTER;
 }
-function renderWrong() {
-  // 틀린 횟수 분포 (필터 배지용)
-  const weakIds = allSubs().map(x => x.id).filter(isWeak);
-  const dist = { 1: 0, 2: 0, 3: 0 };
-  for (const id of weakIds) {
-    const n = wrongTimes(id);
-    dist[n >= 3 ? 3 : n] = (dist[n >= 3 ? 3 : n] || 0) + 1;
+/* 질문 단위 목록: 오답 브라우징·뽀개기의 공통 원천.
+   cnt = 태어난 계기(세션 틀림) + 뽀개기 다시 쌓기 횟수, ok = 뽀개기에서 맞춘 분류 */
+function questionEntries(quizId) {
+  const out = [];
+  for (const x of allSubs()) {
+    if ((quizId && x.quiz.id !== quizId) || !isWeak(x.id)) continue;
+    const l = latest(x.id);
+    let rqs = l && l.rq;
+    if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
+    const push = it => {
+      it.key = crushKey(it);
+      const st = qstat(it.key);
+      it.cnt = st.w + (it.groups ? Math.max(1, wrongTimes(x.id)) : 1);
+      it.ok = !!st.ok;
+      out.push(it);
+    };
+    if (Array.isArray(rqs) && rqs.length) {
+      for (const r of rqs) push({ sid: x.id, title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
+    } else {
+      push({ sid: x.id, title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer });
+    }
   }
-  const filters = [["all", `전체 ${weakIds.length}`], ["1", `1번 ${dist[1] || 0}`], ["2", `2번 ${dist[2] || 0}`], ["3", `3번+ ${dist[3] || 0}`]];
+  return out;
+}
+function qaAnswerText(it) {
+  const parts = [];
+  if (it.n) parts.push(it.n);
+  if (it.k && it.k.length) parts.push(it.k.join(" · "));
+  if (!parts.length && it.groups) parts.push(it.groups.map(g => g.name).join(" · "));
+  return parts.join(" · ") || (it.model || "").split("\n")[0].slice(0, 90);
+}
+function renderWrong() {
+  const allEnts = questionEntries(null);
+  const dist = { 1: 0, 2: 0, 3: 0 };
+  for (const it of allEnts) dist[it.cnt >= 3 ? 3 : it.cnt] = (dist[it.cnt >= 3 ? 3 : it.cnt] || 0) + 1;
+  const filters = [["all", `전체 ${allEnts.length}`], ["1", `1번 ${dist[1] || 0}`], ["2", `2번 ${dist[2] || 0}`], ["3", `3번+ ${dist[3] || 0}`]];
+
+  const qaRow = it => `
+    <tr class="${it.ok ? "qdone" : ""}">
+      <td class="qa-c"><input type="checkbox" class="qsel" data-key="${esc(it.key)}"></td>
+      <td class="qa-q">${it.ok ? "✓ " : ""}${esc(it.q)} <span class="wl-qn">${it.cnt}회 틀림</span></td>
+      <td class="qa-a"><span class="veil" data-act="qa-toggle">${esc(qaAnswerText(it))}</span></td>
+    </tr>`;
 
   const sections = [];
   let count = 0;
   for (const quiz of DATA) {
-    // 브라우징은 질문 목록만 (풀이는 뽀개기에서)
-    const rows = [];
-    quiz.questions.forEach(q => q.subs.forEach(sub => {
-      const id = subId(quiz, q, sub);
-      if (!isWeak(id) || !wfMatch(id)) return;
-      const l = latest(id);
-      let rqs = l && l.rq;
-      if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
-      // 질문별 틀린 횟수 = 태어난 계기(세션에서 1회 틀림) + 뽀개기에서 다시 쌓기 횟수
-      const qLine = (qtext, seed) => {
-        const st = qstat(id + "|" + qtext);
-        return `<li class="${st.ok ? "qdone" : ""}">${st.ok ? "✓ " : ""}${esc(qtext)}
-          <span class="wl-qn">${st.w + seed}회 틀림</span></li>`;
-      };
-      rows.push(`<div class="wl-card">
-        <div class="wl-head"><span class="wl-t">${esc(q.title)}${sub.hideHead ? "" : " · " + esc(String(sub.no))}</span></div>
-        ${Array.isArray(rqs) && rqs.length
-          ? `<ol class="wl-qs">${rqs.map(r => qLine(r.q || "", 1)).join("")}</ol>`
-          : `<ol class="wl-qs">${qLine(q.title + " 전체 인출", wrongTimes(id))}</ol>`}
+    const ents = questionEntries(quiz.id).filter(it => wfMatchN(it.cnt));
+    if (!ents.length) continue;
+    count += ents.length;
+    // 카드별로 묶어 질문|답 표로
+    const byCard = new Map();
+    for (const it of ents) {
+      if (!byCard.has(it.sid)) byCard.set(it.sid, { title: it.title, list: [] });
+      byCard.get(it.sid).list.push(it);
+    }
+    const rows = [...byCard.values()].map(c => `
+      <div class="wl-card">
+        <div class="wl-head"><span class="wl-t">${esc(c.title)}</span></div>
+        <table class="qa"><tbody>${c.list.map(qaRow).join("")}</tbody></table>
       </div>`);
-    }));
-    if (!rows.length) continue;
-    count += rows.length;
+    const cc = crushCounts(quiz.id);
+    const sv = loadCrush();
+    const resume = sv && sv.quiz === quiz.id;
     sections.push(
       `<details class="wrong-sec">
         <summary><span class="ws-name">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}</span>
-          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${rows.length}개</span></summary>
+          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${ents.length}개</span></summary>
         <div class="ws-body">
-          ${(() => {
-            const cc = crushCounts(quiz.id);
-            const sv = loadCrush();
-            const resume = sv && sv.quiz === quiz.id;
-            return `<div class="wl-btns">
-              ${resume ? `<button class="btn primary" data-act="crush-resume">${ico("bolt")} 이어서 뽀개기 (남은 ${sv.pile.length})</button>
-                          <button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}">처음부터</button>`
-                : cc.rem ? `<button class="btn primary" data-act="crush-start" data-quiz="${esc(quiz.id)}">${ico("bolt")} 오답 뽀개기 시작 (${cc.rem})</button>` : ""}
-              ${cc.all > cc.rem ? `<button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}" data-all="1">맞춘 ${cc.all - cc.rem}개 포함해 시작</button>` : ""}
-            </div>`;
-          })()}
+          <div class="wl-btns">
+            ${resume ? `<button class="btn primary" data-act="crush-resume">${ico("bolt")} 이어서 뽀개기 (남은 ${sv.pile.length})</button>
+                        <button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}">처음부터</button>`
+              : cc.rem ? `<button class="btn primary" data-act="crush-start" data-quiz="${esc(quiz.id)}">${ico("bolt")} 오답 뽀개기 시작 (${cc.rem})</button>` : ""}
+            <button class="btn ghost" data-act="crush-selected" data-quiz="${esc(quiz.id)}">체크한 것만 뽀개기</button>
+            ${cc.all > cc.rem ? `<button class="btn ghost" data-act="crush-start" data-quiz="${esc(quiz.id)}" data-all="1">맞춘 ${cc.all - cc.rem}개 포함해 시작</button>` : ""}
+          </div>
+          <div class="wl-hint">답 칸은 가려져 있어요. 커서를 대거나 탭하면 보여요.</div>
           ${rows.join("")}
         </div>
       </details>`);
@@ -824,25 +848,11 @@ function loadCrush() {
   return null;
 }
 function buildCrushItems(quizId, includeMastered) {
-  const items = [];
-  for (const x of allSubs()) {
-    if (x.quiz.id !== quizId || !isWeak(x.id) || !wfMatch(x.id)) continue;
-    const l = latest(x.id);
-    let rqs = l && l.rq;
-    if (typeof rqs === "string" && rqs) rqs = [{ q: rqs }];
-    if (Array.isArray(rqs) && rqs.length) {
-      for (const r of rqs) items.push({ sid: x.id, title: x.q.title, q: r.q || "", n: r.n || "", k: Array.isArray(r.k) ? r.k : [], model: x.sub.answer });
-    } else {
-      // AI 질문이 없는 오답: 카드 전체 인출 — 원래 카드처럼 키워드 그룹 전체를 문자+AI로 판정
-      items.push({ sid: x.id, title: x.q.title, q: x.q.title + " 전체 인출", n: "", k: [], groups: x.sub.groups || null, model: x.sub.answer });
-    }
-  }
-  return includeMastered ? items : items.filter(it => !qstat(crushKey(it)).ok);
+  return questionEntries(quizId).filter(it => wfMatchN(it.cnt) && (includeMastered || !it.ok));
 }
 function crushCounts(quizId) {
   const all = buildCrushItems(quizId, true);
-  const rem = all.filter(it => !qstat(crushKey(it)).ok);
-  return { all: all.length, rem: rem.length };
+  return { all: all.length, rem: all.filter(it => !it.ok).length };
 }
 function crushPass(it) {
   const key = crushKey(it);
@@ -990,7 +1000,7 @@ function renderCheckpoint(finished) {
 /* ---------- AI 채점(의미 판정) ----------
    역할 분담: 판정 결과의 합산(O/△/X)은 언제나 고정 코드(suggestFrom).
    AI는 "문자 일치에 실패한 키워드가 의미상으로는 들어 있는가"라는 해석만 맡는다. */
-async function aiJudgeKeywords(topic, model, names, matched, input) {
+async function aiJudgeKeywords(topic, model, names, matched, input, question) {
   let res;
   try {
     res = await fetch(AI_FN_URL, {
@@ -1000,7 +1010,7 @@ async function aiJudgeKeywords(topic, model, names, matched, input) {
         apikey: AI_FN_KEY,
         Authorization: "Bearer " + AI_FN_KEY
       },
-      body: JSON.stringify({ type: "grade_keywords", topic, model, names, matched, answer: input })
+      body: JSON.stringify({ type: "grade_keywords", topic, model, names, matched, answer: input, ...(question ? { question } : {}) })
     });
   } catch {
     throw new Error("서버 연결 안 됨. amgipt-grade 함수 배포와 Verify JWT 끄기를 확인");
@@ -1285,7 +1295,7 @@ function onAppClick(e) {
       // 문자로는 못 찾음 → AI가 의미 포함 여부를 판정 (맞으면 자동 통과)
       CRUSH.checking = true; CRUSH.lastVal = val.trim();
       const snap = it;
-      aiJudgeKeywords(it.title, it.model || "", [it.n || it.q], [], val).then(d => {
+      aiJudgeKeywords(it.title, it.model || "", [it.n || it.q], [], val, it.q).then(d => {
         if (!CRUSH || CRUSH.pile[0] !== snap) return; // 그새 종료·이동했으면 무시
         const r = (d.results || [])[0];
         const verdict = r ? (r.verdict || (r.found ? "good" : "missed")) : "missed";
@@ -1313,6 +1323,19 @@ function onAppClick(e) {
     renderCrush();
     return;
   }
+  if (act === "crush-selected") {
+    e.preventDefault();
+    const sec = btn.closest(".ws-body");
+    const keys = new Set([...sec.querySelectorAll(".qsel:checked")].map(c => c.dataset.key));
+    if (!keys.size) { alert("먼저 질문 왼쪽의 체크박스를 선택해 주세요."); return; }
+    const items = buildCrushItems(btn.dataset.quiz, true).filter(it => keys.has(it.key));
+    if (!items.length) return;
+    CRUSH = { quiz: btn.dataset.quiz, pile: items, total: items.length, done: 0, reveal: false, lastVal: "", aiNote: "", chips: null };
+    saveCrush();
+    location.hash = "#crush";
+    return;
+  }
+  if (act === "qa-toggle") { btn.classList.toggle("show"); return; }
   if (act === "crush-resume") { CRUSH = loadCrush(); if (CRUSH) location.hash = "#crush"; return; }
   if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
   if (act === "toggle-subject") {

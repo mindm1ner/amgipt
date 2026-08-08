@@ -351,6 +351,24 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .wl-qs li.qdone { color: var(--faint); }
 .wl-qn { font-size: .72rem; color: var(--no); font-weight: 700; margin-left: 6px; white-space: nowrap; }
 .wl-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 2px 0 10px; }
+.wl-hint { font-size: .76rem; color: var(--faint); margin-bottom: 8px; }
+
+/* 질문|답 표 (답은 가려져 있고 호버·탭에 공개) */
+.qa { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.qa td { padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.qa tr:first-child td { border-top: none; }
+.qa tr.qdone .qa-q { color: var(--faint); }
+.qa-c { width: 28px; }
+.qa-c input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.qa-q { width: 55%; }
+.qa-a { width: 45%; }
+.qa-a .veil {
+  display: block; cursor: pointer; border-radius: 6px;
+  background: var(--accent-soft); color: transparent; padding: 2px 8px;
+  transition: color .12s;
+  -webkit-user-select: none; user-select: none;
+}
+.qa-a .veil:hover, .qa-a .veil.show { color: var(--ink); }
 .wl-noq { margin-top: 4px; font-size: .8rem; color: var(--faint); }
 
 /* 오답 뽀개기 드릴 */
