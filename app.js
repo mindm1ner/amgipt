@@ -638,9 +638,14 @@ function renderWrong() {
     const s = quizStats(quiz);
     count += s.weak;
     sections.push(
-      `<h2 class="sec">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}
-        <span>${quiz.mode === "review" ? "복습" : "기출"} · 다시 볼 것 ${s.weak}</span></h2>` + cards);
+      `<details class="wrong-sec">
+        <summary><span class="ws-name">${esc(quiz.subject)} · ${esc(quiz.range || quiz.title)}</span>
+          <span class="ws-meta">${quiz.mode === "review" ? "복습" : "기출"} · ${s.weak}개</span></summary>
+        ${cards}
+      </details>`);
   }
+  // 영역이 하나뿐이면 바로 펼쳐둔다
+  if (sections.length === 1) sections[0] = sections[0].replace("<details class=\"wrong-sec\">", "<details class=\"wrong-sec\" open>");
   $("#app").innerHTML = `
     <div class="topbar">
       <a class="back" href="#">← 홈</a>
