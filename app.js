@@ -143,10 +143,12 @@ function record(id, r, auto, miss, rq) {
   const t = Date.now();
   const last = h[h.length - 1];
   const m = (miss && miss.length) ? miss : undefined;
-  // AI 재질문 목록(JSON 문자열로 전달됨): 다음 집중 인출의 문제 목록으로 쓴다
+  // AI 재질문 목록(JSON 문자열로 전달됨): 다음 집중 인출의 문제 목록이자 채점 그룹으로 쓴다
   let q;
   if (r !== "O" && rq) { try { q = JSON.parse(rq); } catch { q = rq; } }
   if (Array.isArray(q) && !q.length) q = undefined;
+  // 새 재질문이 없는데 여전히 못 맞혔으면(예: AI 꺼짐·눈풀이) 기존 질문 목록을 이어간다
+  if (!q && r !== "O" && last && last.rq) q = last.rq;
   // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
   if (last && t - last.t < 10 * 60 * 1000) {
     last.r = r; last.a = auto || last.a; last.t = t;
@@ -516,10 +518,16 @@ const FULL_OVERRIDE = new Set(); // "전체로 풀기"를 누른 소문항
 function focusGroupsFor(id, sub) {
   if (!sub.groups || FULL_OVERRIDE.has(id)) return null;
   const l = latest(id);
-  if (!l || l.r === "O" || !l.m || !l.m.length) return null;
+  if (!l || l.r === "O") return null;
+  // 재질문에 채점 키워드(k)가 붙어 있으면 그것이 곧 집중 인출의 채점 그룹 (키워드 밖 결손·부분 판정까지 커버)
+  if (Array.isArray(l.rq)) {
+    const withK = l.rq.filter(r => r && Array.isArray(r.k) && r.k.length);
+    if (withK.length) return withK.map(r => ({ name: r.n || (r.q || "").slice(0, 24), variants: r.k }));
+  }
+  // 폴백(구형 기록): 놓친 원래 키워드 그룹의 부분집합
+  if (!l.m || !l.m.length) return null;
   const names = new Set(l.m);
   const g = sub.groups.filter(x => names.has(x.name));
-  // AI 재질문이 있으면 전부 놓쳤어도 집중 모드로 (질문 자체가 구체적이라)
   return g.length && (g.length < sub.groups.length || l.rq) ? g : null;
 }
 function effGroups(subEl, sub) {
@@ -816,10 +824,15 @@ async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
     for (const gp of (data.gaps || []).slice(0, 3)) {
       if (gp && gp.point) notes.push({ mark: "✗", nm: gp.point + " (키워드 밖)", note: gp.note || "" });
     }
-    // AI가 놓친 것마다 하나씩 만든 재질문: 판정 확정 시 기록에 저장되어 다음 집중 인출의 문제 목록이 된다
+    // AI가 놓친 것마다 하나씩 만든 재질문 + 그 질문의 채점 키워드: 판정 확정 시 기록에 저장되어
+    // 다음 집중 인출의 문제 목록이자 채점 그룹이 된다
     const retry = (Array.isArray(data.retry) ? data.retry : [])
-      .filter(r => r && r.q).map(r => ({ n: r.target || "", q: r.q }))
-      .concat(!Array.isArray(data.retry) && data.retry_question ? [{ n: "", q: data.retry_question }] : []);
+      .filter(r => r && r.q).map(r => ({
+        n: r.target || "",
+        q: r.q,
+        k: Array.isArray(r.kw) ? r.kw.filter(x => typeof x === "string" && x.trim()).slice(0, 6) : []
+      }))
+      .concat(!Array.isArray(data.retry) && data.retry_question ? [{ n: "", q: data.retry_question, k: [] }] : []);
     if (retry.length) subEl.dataset.rq = JSON.stringify(retry);
     const s = statusEl();
     if (s) {
