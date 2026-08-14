@@ -48,6 +48,8 @@ body {
   line-height: 1.65; word-break: keep-all;
 }
 #app { max-width: 720px; margin: 0 auto; padding: 24px 16px 96px; }
+/* 홈은 왼쪽 메뉴 + 본문 2단이라 넓게 쓴다. 퀴즈·세션은 읽는 화면이라 720px를 지킨다 */
+body[data-screen="home"] #app { max-width: 1120px; padding-top: 20px; }
 
 /* ---------- 공통 ---------- */
 .chip {
@@ -71,12 +73,6 @@ body {
 .btn.big { font-size: 1rem; padding: 12px 22px; border-radius: 12px; }
 
 /* ---------- 홈 ---------- */
-.masthead { margin: 4px 0 22px; text-align: left; }
-.masthead h1 {
-  font-family: "HsSummerWaterLight", "87MM일상", Batang, serif;
-  font-size: 2rem; font-weight: normal; letter-spacing: .08em; color: var(--ink);
-}
-.masthead p { color: var(--sub); font-size: .82rem; margin-top: 4px; }
 .banner {
   background: var(--warn-bg); border: 1px solid var(--warnb); border-radius: 14px;
   padding: 12px 16px; margin-bottom: 16px;
@@ -85,25 +81,8 @@ body {
 }
 
 /* 오늘의 PT 컴팩트 바 */
-.pt-bar {
-  display: flex; align-items: center; gap: 14px;
-  background: var(--accent); color: var(--bg);
-  border-radius: 999px; padding: 10px 10px 10px 22px;
-  box-shadow: var(--shadow); margin-bottom: 8px;
-}
-.pt-bar .t { font-weight: 800; font-size: .95rem; white-space: nowrap; }
-.pt-bar .d { flex: 1; font-size: .8rem; opacity: .82; min-width: 0; }
-.pt-bar .btn { background: var(--bg); border-color: var(--bg); color: var(--ink); font-weight: 700; border-radius: 999px; padding: 9px 20px; }
-.pt-bar .btn:disabled { opacity: .6; }
-.pt-sub {
-  display: flex; gap: 14px; align-items: center;
-  font-size: .76rem; color: var(--faint); padding: 0 8px; margin-bottom: 4px;
-}
-.pt-sub .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
-.pt-sub .fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s; }
 
 /* 탭 내비게이션 (서랍 / 오답 / 고질 약점) */
-.navtabs { display: flex; gap: 8px; margin: 16px 0 4px; align-items: center; }
 .nt {
   font: inherit; font-size: .84rem; font-weight: 700;
   padding: 7px 16px; border-radius: 999px;
@@ -113,49 +92,84 @@ body {
 .nt:hover { border-color: var(--sub); }
 .nt.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 
-/* ---------- 서랍 (파일 캐비닛 홈) ---------- */
-.drawer { padding-top: 28px; }
-.file { position: relative; margin: -13px auto 0; height: 46px; }
-.file .fbody {
-  position: absolute; left: 0; right: 0; top: 13px; bottom: 0;
-  border: 1.5px solid var(--ink); border-bottom: none;
-  border-radius: 12px 12px 0 0; background: var(--bg);
-}
-.file .ftab {
-  position: absolute; top: 0; min-width: 128px; max-width: 62%;
-  border: 1.5px solid var(--ink); border-bottom: none;
-  border-radius: 9px 9px 0 0; background: var(--bg); color: var(--ink);
-  display: flex; align-items: center; gap: 14px; justify-content: space-between;
-  padding: 12px 16px 6px; font: inherit; font-size: .84rem; z-index: 2;
-  cursor: pointer; transition: transform .15s;
-}
-.file .ftab:hover { transform: translateY(-4px); }
-.file .ftab .num { color: var(--sub); font-weight: 600; font-size: .76rem; }
-.file .ftab .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file.subject .ftab {
-  background: var(--ink); color: var(--bg); border-color: var(--ink);
-  font-family: "HsSummerWaterLight", "87MM일상", serif; letter-spacing: .06em; font-size: .95rem;
-}
-.file.subject .ftab .num { color: var(--bg); opacity: .7; font-family: "87MM일상", sans-serif; }
-.file.blank { pointer-events: none; }
-.file .weak {
-  position: absolute; right: 16px; top: 21px; z-index: 2;
-  font-size: .7rem; color: var(--no); font-weight: 700;
-}
-.drawer-front { position: relative; margin-top: -1px; margin-bottom: 8px; }
-.drawer-front .panel {
-  height: 64px; border: 1.5px solid var(--ink); border-radius: 4px 4px 10px 10px;
-  background: var(--bg);
-  transform: perspective(300px) rotateX(-14deg); transform-origin: top;
-}
-.drawer-front .label {
-  position: absolute; left: 50%; top: 26px; transform: translateX(-50%);
-  background: var(--hl); border: 1.5px solid var(--ink); border-radius: 6px;
-  padding: 3px 16px; font-size: .82rem; font-weight: 700; white-space: nowrap; color: var(--ink);
-}
-@media (max-width: 520px) {
-  .file .ftab { min-width: 96px; font-size: .78rem; padding: 12px 11px 6px; gap: 8px; }
-  .file.subject .ftab { font-size: .88rem; }
+/* ---------- 홈: 왼쪽 메뉴 + 본문 ----------
+   서랍(파일 캐비닛)을 걷어냈다. 파일이 세로로 쌓여 항목 수만큼 길어지는 구조였다.
+   넓은 화면은 2단, 좁은 화면은 메뉴 화면 → 본문 화면으로 넘어간다. */
+.home { display: flex; gap: 0; align-items: flex-start;
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: var(--card); box-shadow: var(--shadow); margin-bottom: 18px; }
+.side { width: 208px; flex-shrink: 0; background: var(--bg);
+  border-right: 1px solid var(--line); padding: 16px 0 18px; align-self: stretch; }
+.mainpane { flex: 1; min-width: 0; padding: 18px 20px 24px; }
+.backrow { display: none; }
+
+.sbrand { padding: 0 16px 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.sbrand h1 { font-family: "HsSummerWaterLight", "87MM일상", Batang, serif;
+  font-size: 1.34rem; font-weight: normal; letter-spacing: .08em; color: var(--ink); line-height: 1.2; }
+.sbrand p { color: var(--sub); font-size: .68rem; margin-top: 1px; }
+.sgroup { padding: 12px 0 4px; }
+.sgroup + .sgroup { border-top: 1px solid var(--line); margin-top: 5px; }
+.slabel { font-size: .64rem; letter-spacing: .13em; color: var(--faint);
+  font-weight: 700; padding: 0 16px 6px; }
+.mi { display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 13px 8px 16px; background: none; border: 0; font: inherit; color: var(--ink);
+  cursor: pointer; text-align: left; border-left: 2px solid transparent; transition: background .12s; }
+.mi:hover { background: var(--hover); }
+.mi.on { background: var(--accent-soft); border-left-color: var(--ink); font-weight: 700; }
+.mi .mnm { flex: 1; min-width: 0; font-size: .84rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mi .mct { font-size: .7rem; color: var(--sub); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mi.on .mct { color: var(--ink); }
+.mi .mdue { font-size: .66rem; font-weight: 700; background: var(--accent); color: var(--bg);
+  border-radius: 999px; padding: 1px 7px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.mi .ico { color: var(--sub); flex-shrink: 0; }
+.mi.on .ico { color: var(--ink); }
+
+.mhead { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; margin-bottom: 14px; }
+.mhead h2 { font-size: 1.16rem; font-weight: 700; letter-spacing: .01em; }
+.mhead p { font-size: .78rem; color: var(--sub); margin-top: 2px; }
+.mhead .btn { flex-shrink: 0; }
+.mrow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font: inherit; color: inherit; background: none; border: 0;
+  border-bottom: 1px solid var(--line); padding: 10px 2px; transition: background .12s; }
+.mrow:last-child { border-bottom: 0; }
+.mrow.click { cursor: pointer; }
+.mrow:hover { background: var(--hover); }
+.mrow .nm { flex: 1; min-width: 0; font-size: .87rem; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow .nm .tag { font-size: .68rem; color: var(--faint); font-weight: 400; margin-left: 6px; }
+.mrow .cnt { font-size: .74rem; color: var(--sub); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.bdg { font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  flex-shrink: 0; font-variant-numeric: tabular-nums; background: var(--accent-soft); color: var(--accent); }
+.bdg.warn { background: var(--no-bg); color: var(--no); }
+.vd { font-size: .72rem; font-weight: 700; width: 22px; text-align: center; flex-shrink: 0; }
+.vd.o { color: var(--ok); } .vd.t { color: var(--warn); } .vd.x { color: var(--no); }
+.mt-empty { color: var(--faint); font-size: .85rem; padding: 22px 0; }
+.mt-more { color: var(--faint); font-size: .74rem; padding: 10px 2px; }
+.mstat { display: flex; gap: 20px; padding: 10px 0 14px;
+  border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.mstat div b { display: block; font-size: 1.24rem; line-height: 1.2; font-weight: normal;
+  font-family: "HsSummerWaterLight", Batang, serif; font-variant-numeric: tabular-nums; }
+.mstat div span { font-size: .68rem; color: var(--sub); }
+/* 하루치 O·부분·모름 비율. 색이 아니라 형태로 가른다 */
+.mix { display: flex; width: 92px; height: 9px; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--line); flex-shrink: 0; }
+.mix i { display: block; height: 100%; }
+.mix .o { background: var(--ink); }
+.mix .t { background-image: repeating-linear-gradient(45deg, var(--ink) 0 1.5px, transparent 1.5px 4.5px); }
+.mix .x { background: transparent; }
+
+@media (max-width: 760px) {
+  .home { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .side { width: 100%; border-right: 0; background: transparent; padding: 0 0 8px; }
+  .mainpane { padding: 0; }
+  .home[data-view="menu"] .mainpane { display: none; }
+  .home[data-view="detail"] .side { display: none; }
+  .home[data-view="detail"] .backrow { display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: 0; font: inherit; font-size: .8rem; font-weight: 600;
+    color: var(--sub); cursor: pointer; padding: 0; margin-bottom: 14px; }
+  .home[data-view="detail"] .backrow:hover { color: var(--ink); }
 }
 
 /* 오늘의 PT (잉크 카드: 라이트=검정 위 흰 글씨, 다크=아이보리 위 검은 글씨) */
@@ -596,3 +610,75 @@ details.ctx .q-body { overflow-x: auto; }
   .mode-row { flex-wrap: wrap; }
   .mode-row .m-acts { width: 100%; justify-content: flex-end; }
 }
+
+.mrow .nm .sn { font-size: .7rem; color: var(--faint); font-weight: 600; margin-left: 5px; }
+
+/* ---------- 내용 체계표: 표 빈칸형 ----------
+   빈칸 하나가 카드 하나. 표는 보여주는 방식일 뿐이라 판정 표시도 칸마다 붙는다. */
+.ct-card .q-head .qpts { color: var(--sub); font-weight: 600; }
+.ct-ideas { margin: 10px 0 4px; }
+.ct-ideas summary { font-size: .78rem; color: var(--sub); cursor: pointer; font-weight: 600; }
+.ct-ideas ul { list-style: none; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.ct-ideas li { font-size: .82rem; color: var(--ink); padding-left: 12px; position: relative; line-height: 1.6; }
+.ct-ideas li::before { content: ""; position: absolute; left: 0; top: .68em;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+.ct-scroll { overflow-x: auto; margin: 12px 0 4px; border: 1px solid var(--line); border-radius: 10px; }
+table.ctt { border-collapse: collapse; width: 100%; min-width: 520px; }
+table.ctt th, table.ctt td { border: 1px solid var(--line); padding: 7px 8px; vertical-align: top; }
+table.ctt thead th { background: var(--hover); font-size: .74rem; font-weight: 700;
+  color: var(--sub); text-align: center; white-space: nowrap; }
+table.ctt th.ctcat { width: 74px; font-size: .72rem; font-weight: 700; text-align: left;
+  background: var(--hover); white-space: nowrap; }
+table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-align: left; color: var(--sub); }
+.ctb { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
+.ctb:last-child { margin-bottom: 0; }
+.ctin { flex: 1; min-width: 90px; font: inherit; font-size: .8rem; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; }
+.ctin:focus { outline: 2px solid var(--ink); outline-offset: -1px; border-color: transparent; }
+.ctin[readonly] { background: transparent; }
+.ctmark { font: inherit; font-size: .72rem; font-weight: 700; width: 20px; height: 20px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--faint);
+  cursor: pointer; flex-shrink: 0; line-height: 1; padding: 0; }
+.ctmark:empty { cursor: default; }
+.ctb.hit .ctmark { color: var(--ok); background: var(--ok-bg); }
+.ctb.miss .ctmark { color: var(--no); background: var(--no-bg); }
+.ctb.hit .ctin { border-color: var(--okb, var(--line)); }
+.ctb.miss .ctin { border-color: var(--nob, var(--line)); text-decoration: line-through; color: var(--sub); }
+.ctans { font-size: .78rem; color: var(--ok); font-weight: 600; flex-basis: 100%; padding-left: 2px; }
+.ctans:empty { display: none; }
+.ct-acts { display: flex; align-items: center; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+.ct-score { font-size: .8rem; color: var(--sub); font-weight: 600; }
+.ct-card.graded .ct-acts .btn { display: none; }
+@media (max-width: 560px) {
+  table.ctt th.ctsub { width: 84px; font-size: .7rem; }
+  .ctin { font-size: .76rem; min-width: 70px; }
+}
+
+/* 내체표 출제 범위 고르기 */
+.ctscope { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 15px; margin-bottom: 14px; }
+.cs-head { display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
+.cs-head b { font-size: .8rem; letter-spacing: .03em; }
+.cs-head span { font-size: .71rem; color: var(--sub); }
+.cs-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.ck { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: .78rem;
+  font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: 5px 13px;
+  background: var(--bg); color: var(--sub); cursor: pointer;
+  transition: border-color .13s, background .13s, color .13s; }
+.ck:hover { border-color: var(--sub); }
+.ck[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.ck .n { font-variant-numeric: tabular-nums; opacity: .7; font-weight: 400; }
+.cs-sum { font-size: .76rem; color: var(--ink); margin-top: 10px;
+  padding-top: 9px; border-top: 1px solid var(--line); }
+.cs-sum b { font-variant-numeric: tabular-nums; }
+/* 범위 밖 칸: 문제가 아니라 배경 */
+.ctoff { font-size: .78rem; color: var(--sub); padding: 4px 2px; line-height: 1.5; }
+
+/* 지문 속 밑줄. 기출이 밑줄로 답 자리를 찍고 물음도 "밑줄 친 ㉠"이라 부른다 */
+.q-body strong { font-weight: 600; text-decoration: underline;
+  text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+/* 지문에 실린 그림 자료 (악보·정간보·시각 자료). 기출 페이지에서 잘라 온 것 */
+.q-body img { max-width: 100%; height: auto; display: block;
+  margin: 12px auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }

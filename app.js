@@ -176,6 +176,53 @@ for (const set of (window.DAJIGI_DAN || [])) {
   });
 }
 
+/* ---------- 내용 체계표: 표 빈칸형 ----------
+   빈칸 하나가 카드 하나다. 표는 보여주는 방식일 뿐이라 판정은 칸마다 따로 매겨진다.
+   파일에는 최소한만 담고(no·a·cat·gr) 나머지는 여기서 채운다. */
+for (const set of (window.DAJIGI_CT || [])) {
+  DATA.push({
+    ...set,
+    questions: set.questions.map(q => ({
+      ...q,
+      points: 0,
+      frame: "내용 체계표 · " + set.range,
+      body: "",
+      /* type "term" 은 parts 로 채점한다 (groups 는 essay 용). 표 안에서 풀든
+         오늘의 복습에서 한 장씩 나오든 같은 답으로 판정되게 둘 다 채워 둔다 */
+      subs: q.subs.map(s => ({
+        no: s.no, type: "term", hideHead: true, points: 0, prompt: "",
+        answer: s.a,
+        parts: [{ label: `${s.cat.replace("⋅", "·")} · ${s.gr}`, accept: [s.a] }],
+        ct: { cat: s.cat, gr: s.gr }
+      }))
+    }))
+  });
+}
+
+/* ---------- 내용 체계표: 맥락형 ----------
+   수업 장면을 주고 그 칸의 내용 요소 하나를 인출한다. 기출 25건의 골격 그대로다.
+   카드 구조는 기존 것과 같아서 세션·오답·간격 엔진이 그대로 돈다. */
+for (const set of (window.DAJIGI_CTX || [])) {
+  DATA.push({
+    ...set,
+    questions: set.questions.map(q => ({
+      ...q,
+      points: 1,
+      // 출처를 밝힌다. 원문 발췌인지 각색인지 지어낸 장면인지가 구분돼야 한다
+      frame: q.src
+        ? `${q.adapted ? "기출 각색" : "기출 지문"} · ${q.src}`
+        : "수업 맥락 · " + set.range,
+      subs: q.subs.map(s => ({
+        no: s.no, type: "term", hideHead: true, points: 1,
+        prompt: s.ask,
+        answer: s.a,
+        parts: [{ label: "내용 요소", accept: [s.a] }],
+        ct: { cat: s.cat, gr: s.gr, area: s.area }
+      }))
+    }))
+  });
+}
+
 /* ---------- 저장소 ---------- */
 function loadStore() {
   try {
@@ -276,31 +323,117 @@ function previewIvl(id, v) {
 }
 function allSubs() {
   const out = [];
-  for (const quiz of DATA)
+  for (const quiz of DATA) {
+    // 내체표는 과목마다 고른 범주만 카드로 센다
+    const cats = quiz.kind === "ct" ? ctCats(quiz.range) : null;
     for (let qi = 0; qi < quiz.questions.length; qi++) {
       const q = quiz.questions[qi];
-      for (let si = 0; si < q.subs.length; si++)
-        out.push({ quiz, q, sub: q.subs[si], qi, si, id: subId(quiz, q, q.subs[si]) });
+      for (let si = 0; si < q.subs.length; si++) {
+        const sub = q.subs[si];
+        if (cats && !cats.has(sub.ct.cat)) continue;
+        out.push({ quiz, q, sub, qi, si, id: subId(quiz, q, sub) });
+      }
     }
+  }
   return out;
 }
 const NEW_PER_DAY = 10;
-function buildQueue(mode) {
-  const subs = allSubs().map(x => ({ ...x, st: subState(x.id) }));
-  if (mode === "chronic") return subs.filter(x => x.st.chronic);
-  const relearn = subs.filter(x => x.st.status === "relearn" && x.st.isDue);
-  const review = subs.filter(x => x.st.status === "review" && x.st.isDue);
-  const fresh = subs.filter(x => x.st.status === "new").slice(0, NEW_PER_DAY);
+
+/* 범위(scope): 무엇을 도는가. null이면 전부.
+   "sj:사회" = 과목 하나 · "ar:사회|정치" = 영역 하나.
+   홈이 왼쪽 메뉴로 바뀌면서 세션은 늘 어딘가에서 시작된다 (전 범위 무작위였던 오늘의 PT를 없앴다). */
+function rangeOf(quiz) { return quiz.range || quiz.title; }
+function inScope(x, scope) {
+  if (!scope) return true;
+  if (scope.startsWith("sj:")) return x.quiz.subject === scope.slice(3);
+  if (scope.startsWith("qz:")) return x.quiz.id === scope.slice(3);
+  if (scope.startsWith("ar:")) {
+    const i = scope.indexOf("|");
+    return x.quiz.subject === scope.slice(3, i) && rangeOf(x.quiz) === scope.slice(i + 1);
+  }
+  return true;
+}
+function scopedSubs(scope) {
+  return allSubs().filter(x => inScope(x, scope)).map(x => ({ ...x, st: subState(x.id) }));
+}
+/* 오늘 처음 꺼낸 카드 수. 첫 기록이 오늘이면 오늘 들어온 카드다.
+   범위별로 세션을 돌아도 신규 배정은 하루 전체에서 10장이라는 뜻 (범위마다 10장이 아니다). */
+function newIntroducedToday() {
+  const t = todayStr();
+  let n = 0;
+  for (const h of Object.values(S.records)) if (h.length && h[0].d === t) n++;
+  return n;
+}
+function newBudget() { return Math.max(0, NEW_PER_DAY - newIntroducedToday()); }
+
+/* ---------- 섞기 ----------
+   문서 순서 그대로 내면 앞 카드가 다음 답을 일러 준다. 내체표는 한 칸의 항목들이
+   나란히 붙어 있어서 특히 그렇다. 섞은 뒤, 같은 칸(과목·영역·범주)이 잇달아 나오지
+   않도록 흩는다. 좌표가 매번 바뀌어야 좌표를 보고 답을 고르게 된다. */
+function shuffled(list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function cellKey(x) {
+  const c = x.sub.ct;
+  return c ? [x.quiz.range, c.area || "", c.cat || ""].join("|") : x.quiz.id;
+}
+function spread(list) {
+  const pool = shuffled(list);
+  const out = [];
+  let last = null;
+  while (pool.length) {
+    let i = pool.findIndex(x => cellKey(x) !== last);
+    if (i < 0) i = 0;                 // 남은 게 전부 같은 칸이면 어쩔 수 없다
+    out.push(pool[i]);
+    last = cellKey(pool[i]);
+    pool.splice(i, 1);
+  }
+  return out;
+}
+
+function buildQueue(mode, scope) {
+  const subs = scopedSubs(scope);
+  if (mode === "all") return spread(subs);
+  if (mode === "chronic") return spread(subs.filter(x => x.st.chronic));
+  /* 다시 볼 것 → 복습 → 새 카드 순서는 지키되, 각 묶음 안에서는 섞는다.
+     새 카드는 골라 담기 전에 섞어야 늘 앞쪽 것만 나오지 않는다 */
+  const relearn = spread(subs.filter(x => x.st.status === "relearn" && x.st.isDue));
+  const review = spread(subs.filter(x => x.st.status === "review" && x.st.isDue));
+  const fresh = spread(subs.filter(x => x.st.status === "new")).slice(0, newBudget());
+  if (mode === "fresh") return fresh;
+  if (mode === "weak") return spread(subs.filter(x => x.st.last && x.st.last.r !== "O"));
   return [...relearn, ...review, ...fresh];
 }
-function queueCounts() {
-  const subs = allSubs().map(x => subState(x.id));
+function queueCounts(scope) {
+  const subs = scopedSubs(scope).map(x => x.st);
   return {
+    all: subs.length,
     fresh: subs.filter(s => s.status === "new").length,
     relearn: subs.filter(s => s.status === "relearn" && s.isDue).length,
     review: subs.filter(s => s.status === "review" && s.isDue).length,
-    chronic: subs.filter(s => s.chronic).length
+    chronic: subs.filter(s => s.chronic).length,
+    weak: subs.filter(s => s.last && s.last.r !== "O").length
   };
+}
+/* 그날그날 한 것. 기록에 이미 날짜(d)가 박혀 있어서 묶기만 하면 된다.
+   쉰 날은 줄을 만들지 않는다 — 빈칸이 증거로 남지 않게. */
+function dailyLog() {
+  const by = new Map();
+  for (const h of Object.values(S.records)) {
+    for (const r of h) {
+      const d = r.d || (r.t ? new Date(r.t).toISOString().slice(0, 10) : null);
+      if (!d) continue;
+      const o = by.get(d) || { n: 0, O: 0, T: 0, X: 0 };
+      o.n++; o[r.r === "O" ? "O" : r.r === "X" ? "X" : "T"]++;
+      by.set(d, o);
+    }
+  }
+  return [...by.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
 
 /* 음성 인식(Web Speech API): 마이크 버튼 토글, 말한 내용이 답안 칸에 실시간 입력 */
@@ -394,7 +527,11 @@ const ICONS = {
   mic: '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
   pen: '<path d="M4 20l4-1L20 7l-3-3L5 16z"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>'
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  due: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
+  cross: '<circle cx="12" cy="12" r="8.5"/><path d="M15 9l-6 6M9 9l6 6"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>'
 };
 function ico(name) {
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -439,19 +576,27 @@ function openRangeSheet(name) {
   if (!quizzes.length) return;
   const rows = quizzes.map(quiz => {
     const s = quizStats(quiz);
-    const isReview = quiz.mode === "review";
+    const kind = quiz.kind || (quiz.mode === "review" ? "review" : "exam");
+    const META = {
+      ct: ["grid", "표 빈칸형", "표의 내용 요소를 전부 비우고 채운다"],
+      ctx: ["recall", "맥락형", "수업 장면을 보고 그 칸의 내용 요소를 쓴다"],
+      review: ["recall", "복습 모드", "단권화 키워드 인출·설명"],
+      exam: ["doc", "기출 모드", "기출 프레임 문서형 풀이"]
+    };
+    const [icon, name, desc] = META[kind] || META.exam;
     return `
     <div class="mode-row">
-      <div class="m-icon">${isReview ? ico("recall") : ico("doc")}</div>
+      <div class="m-icon">${ico(icon)}</div>
       <div class="m-main">
-        <div class="m-name">${isReview ? "복습 모드" : "기출 모드"}</div>
-        <div class="m-desc">${isReview
-          ? `단권화 키워드 인출·설명 · 소문항 ${s.total}`
-          : `기출 프레임 문서형 풀이 · 소문항 ${s.total}`} · 풀어봄 ${s.tried}</div>
+        <div class="m-name">${name}</div>
+        <div class="m-desc">${desc} · 소문항 ${s.total} · 풀어봄 ${s.tried}</div>
       </div>
       <div class="m-acts">
-        <a class="btn primary" href="#q/${quiz.id}">풀기</a>
-        ${s.weak ? `<a class="btn" href="#q/${quiz.id}/weak">틀린 것만 ${s.weak}</a>` : ""}
+        ${quiz.kind === "ct"
+          ? `<a class="btn primary" href="#q/${quiz.id}">표 풀기</a>`
+          : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>
+             ${s.weak ? `<button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="weak">틀린 것만 ${s.weak}</button>` : ""}
+             <a class="btn ghost" href="#q/${quiz.id}">한 페이지로</a>`}
       </div>
     </div>`;
   }).join("");
@@ -462,9 +607,7 @@ function openRangeSheet(name) {
   o.classList.add("show");
 }
 
-/* 서랍: 과목(검정 탭) 아래 영역(흰 탭) 파일이 꽂혀 있다 */
-let DRAWER_OPEN = null; // 첫 렌더에서 초기화
-
+/* 과목 > 영역 묶음. 왼쪽 메뉴가 쓴다 */
 function subjectGroups() {
   const subs = new Map();
   for (const quiz of DATA) {
@@ -475,52 +618,6 @@ function subjectGroups() {
     rm.get(key).push(quiz);
   }
   return subs;
-}
-
-function drawerHtml() {
-  if (DRAWER_OPEN === null) {
-    DRAWER_OPEN = {};
-    const first = DATA[0];
-    if (first) DRAWER_OPEN[first.subject] = true;
-  }
-  const TABPOS = ["14%", "42%", "70%"];
-  const files = [{ blank: true }, { blank: true }, { blank: true }];
-  for (const [subj, ranges] of subjectGroups()) {
-    let cards = 0;
-    for (const qs of ranges.values()) for (const q of qs)
-      cards += q.questions.reduce((a, qq) => a + qq.subs.length, 0);
-    files.push({ subject: subj, num: String(cards).padStart(3, "0") });
-    if (DRAWER_OPEN[subj]) {
-      for (const [name, quizzes] of ranges) {
-        let total = 0, weak = 0;
-        quizzes.forEach(quiz => { const s = quizStats(quiz); total += s.total; weak += s.weak; });
-        files.push({ area: name, num: total, weak, single: quizzes.length === 1 ? quizzes[0].id : "" });
-      }
-    }
-  }
-  const n = files.length;
-  return `<div class="drawer">` + files.map((f, i) => {
-    const depth = n - 1 - i;
-    const width = Math.max(70, 100 - depth * 2.6);
-    const pos = TABPOS[i % 3];
-    if (f.blank) return `<div class="file blank" style="width:${width}%"><div class="fbody"></div></div>`;
-    if (f.subject) return `
-      <div class="file subject" style="width:${width}%">
-        <div class="fbody"></div>
-        <button class="ftab" style="left:${pos}" data-act="toggle-subject" data-subj="${esc(f.subject)}">
-          <span class="nm">${esc(f.subject)}</span><span class="num">${f.num}</span>
-        </button>
-      </div>`;
-    return `
-      <div class="file area" style="width:${width}%">
-        <div class="fbody"></div>
-        <button class="ftab" style="left:${pos}" data-act="open-range" data-range="${esc(f.area)}" data-single="${esc(f.single)}">
-          <span class="num">${f.num}</span><span class="nm">${esc(f.area)}</span>
-        </button>
-        ${f.weak ? `<span class="weak">다시 ${f.weak}</span>` : ""}
-      </div>`;
-  }).join("") + `</div>
-  <div class="drawer-front"><div class="panel"></div><div class="label">채영의 임용 서랍</div></div>`;
 }
 
 function doExport() {
@@ -536,44 +633,163 @@ function totalWeak() {
   return allSubs().filter(x => { const l = latest(x.id); return l && l.r !== "O"; }).length;
 }
 
+/* ---------- 홈: 왼쪽 메뉴 + 본문 ----------
+   서랍(파일 캐비닛)을 걷어냈다. 파일이 항목 수만큼 세로로 쌓여서 과목이 늘면 무너진다.
+   메뉴는 조건을 거는 물건이 아니라 자리를 옮기는 것이라 "지금 뭐가 걸렸지"를 신경 쓸 필요가 없다.
+   좁은 화면에서는 메뉴가 첫 화면이 되고 고르면 본문으로 넘어간다 (HOME_VIEW). */
+let HOME_SEL = "st:today";
+let HOME_VIEW = "menu"; // 좁은 화면에서만 쓰인다
+
+function menuItem(sel, icon, name, count, hot) {
+  const on = HOME_SEL === sel;
+  return `<button class="mi${on ? " on" : ""}" data-act="home-go" data-sel="${esc(sel)}"
+      ${on ? 'aria-current="true"' : ""}>
+    ${icon ? ico(icon) : ""}<span class="mnm">${esc(name)}</span>
+    ${count ? `<span class="${hot ? "mdue" : "mct"}">${count}</span>` : ""}</button>`;
+}
+
+function homeMenuHtml() {
+  const qc = queueCounts();
+  const due = qc.relearn + qc.review;
+  const subj = subjectGroups();
+  return `
+    <div class="sbrand"><h1>암기PT</h1><p>임용 암기 트레이너</p></div>
+    <div class="sgroup"><div class="slabel">상태</div>
+      ${menuItem("st:today", "due", "오늘의 복습", due, true)}
+      ${menuItem("st:weak", "cross", "틀린 것", qc.weak)}
+      ${menuItem("st:fresh", "plus", "아직 안 함", qc.fresh)}
+    </div>
+    <div class="sgroup"><div class="slabel">과목</div>
+      ${[...subj.keys()].map(s => {
+        const c = queueCounts("sj:" + s);
+        return menuItem("sj:" + s, "", s, c.relearn + c.review || c.all, !!(c.relearn + c.review));
+      }).join("")}
+    </div>
+    <div class="sgroup"><div class="slabel">기록</div>
+      ${qc.chronic ? menuItem("st:chronic", "bolt", "고질 약점", qc.chronic) : ""}
+      ${menuItem("st:log", "chart", "기록", 0)}
+    </div>`;
+}
+
+function rowsHtml(list) {
+  if (!list.length) return `<p class="mt-empty">여기는 비어 있어요.</p>`;
+  return list.map(x => {
+    /* 기출 문항은 한 문항에 소문항이 여럿이라 제목만 쓰면 같은 줄이 반복돼 보인다 */
+    const base = esc(x.sub.title || x.q.title || "카드");
+    const nm = x.q.subs.length > 1 ? `${base} <span class="sn">${esc(x.sub.no)}</span>` : base;
+    const v = x.st.last ? x.st.last.r : null;
+    return `<div class="mrow">
+      <span class="nm">${nm}<span class="tag">${esc(x.quiz.subject)} · ${esc(rangeOf(x.quiz))}</span></span>
+      ${v ? `<span class="vd ${v === "O" ? "o" : v === "X" ? "x" : "t"}">${v === "T" ? "△" : v}</span>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function homeMainHtml() {
+  const sel = HOME_SEL;
+
+  if (sel === "st:log") {
+    const log = dailyLog();
+    const total = log.reduce((t, [, o]) => t + o.n, 0);
+    const wk = log.slice(0, 7).reduce((t, [, o]) => t + o.n, 0);
+    return `<div class="mhead"><div><h2>기록</h2>
+        <p>한 날만 쌓여요. 쉰 날은 줄을 만들지 않아요</p></div></div>
+      <div class="mstat">
+        <div><b>${wk}</b><span>최근 7일</span></div>
+        <div><b>${total}</b><span>누적</span></div>
+        <div><b>${log.length}</b><span>기록이 있는 날</span></div>
+      </div>
+      ${log.length ? log.map(([d, o]) => {
+        const t = o.n || 1;
+        const [, mo, dy] = d.split("-");
+        return `<div class="mrow"><span class="nm">${+mo}월 ${+dy}일${
+            d === todayStr() ? `<span class="tag">오늘</span>` : ""}</span>
+          <span class="mix" role="img" aria-label="O ${o.O}, 부분 ${o.T}, 모름 ${o.X}">
+            <i class="o" style="flex:${o.O}"></i><i class="t" style="flex:${o.T}"></i><i class="x" style="flex:${o.X}"></i></span>
+          <span class="cnt">${o.n}장</span></div>`;
+      }).join("") : `<p class="mt-empty">아직 기록이 없어요. 카드를 한 장 풀면 여기 남아요.</p>`}`;
+  }
+
+  /* 과목: 영역 목록 */
+  if (sel.startsWith("sj:")) {
+    const s = sel.slice(3);
+    const ranges = subjectGroups().get(s) || new Map();
+    const c = queueCounts(sel);
+    return `<div class="mhead"><div><h2>${esc(s)}</h2>
+        <p>영역 ${ranges.size} · 카드 ${c.all}장</p></div>
+        ${c.relearn + c.review ? `<button class="btn primary" data-act="start-scope" data-scope="${esc(sel)}">복습 ${c.relearn + c.review}장</button>` : ""}</div>
+      ${[...ranges.entries()].map(([name, quizzes]) => {
+        /* 카드 수는 범위 밖 칸을 뺀 실제 수로 센다 (내체표는 과목마다 범주를 고른다) */
+        const rc = queueCounts("ar:" + s + "|" + name);
+        return `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
+            data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
+          <span class="nm">${esc(name)}</span>
+          <span class="cnt">${rc.all}장</span>
+          ${rc.weak ? `<span class="bdg warn">다시 ${rc.weak}</span>` : ""}
+          ${rc.relearn + rc.review ? `<span class="bdg">${rc.relearn + rc.review}</span>` : ""}
+        </button>`;
+      }).join("")}`;
+  }
+
+  /* 상태 화면 */
+  const k = sel.slice(3);
+  const qc = queueCounts();
+  if (k === "today") {
+    const q = buildQueue("today");
+    const n = qc.relearn + qc.review;
+    const fr = q.length - n;
+    const line = n
+      ? `복습 ${n}장${fr > 0 ? ` · 새 카드 ${fr}장` : ""}`
+      : fr > 0 ? `복습할 건 다 끝냈어요. 새 카드 ${fr}장이 기다려요`
+      : "오늘 볼 카드를 다 끝냈어요";
+    return `<div class="mhead"><div><h2>오늘의 복습</h2>
+        <p>${line}</p></div>
+        ${q.length ? `<button class="btn primary" data-act="start-scope" data-scope="">${q.length}장 시작</button>` : ""}</div>
+      ${rowsHtml(q.slice(0, 30))}
+      ${q.length > 30 ? `<p class="mt-more">아래로 ${q.length - 30}장 더</p>` : ""}`;
+  }
+  if (k === "fresh") {
+    const list = scopedSubs().filter(x => x.st.status === "new");
+    const b = newBudget();
+    return `<div class="mhead"><div><h2>아직 안 함</h2>
+        <p>${list.length}장 · 오늘 더 꺼낼 수 있는 건 ${b}장</p></div>
+        ${b && list.length ? `<button class="btn primary" data-act="start-scope" data-scope="" data-mode="fresh">${Math.min(b, list.length)}장 시작</button>` : ""}</div>
+      ${rowsHtml(list.slice(0, 30))}
+      ${list.length > 30 ? `<p class="mt-more">아래로 ${list.length - 30}장 더</p>` : ""}`;
+  }
+  if (k === "weak") {
+    const list = scopedSubs().filter(x => x.st.last && x.st.last.r !== "O");
+    return `<div class="mhead"><div><h2>틀린 것</h2><p>${list.length}장</p></div>
+        ${list.length ? `<a class="btn" href="#wrong">오답 뽀개기</a>` : ""}</div>
+      ${rowsHtml(list.slice(0, 30))}
+      ${list.length > 30 ? `<p class="mt-more">아래로 ${list.length - 30}장 더</p>` : ""}`;
+  }
+  if (k === "chronic") {
+    const list = scopedSubs().filter(x => x.st.chronic);
+    return `<div class="mhead"><div><h2>고질 약점</h2><p>두 번 잇달아 몰랐던 카드 ${list.length}장</p></div>
+        ${list.length ? `<button class="btn primary" data-act="start-chronic">${list.length}장 시작</button>` : ""}</div>
+      ${rowsHtml(list)}`;
+  }
+  return "";
+}
+
 function renderHome() {
   const recCount = Object.values(S.records).reduce((a, h) => a + h.length, 0);
   const needBackup = recCount > 0 && (!S.lastExport || Date.now() - S.lastExport > 7 * DAY);
   const lastTs = Object.values(S.records).flat().reduce((m, r) => Math.max(m, r.t || 0), 0);
   const staleDays = lastTs ? Math.floor((Date.now() - lastTs) / DAY) : null;
 
-  const qc = queueCounts();
-  const doneToday = goalToday();
-  const freshToday = Math.min(qc.fresh, NEW_PER_DAY);
-  const todayTotal = qc.relearn + qc.review + freshToday;
-  const weakN = totalWeak();
-
   $("#app").innerHTML = `
-    <header class="masthead">
-      <h1>암기PT</h1>
-      <p>임용 암기 트레이너</p>
-    </header>
     ${needBackup && SYNC_STATE !== "ok" ? `<div class="banner"><span>기록 ${recCount}건이 이 브라우저에만 있어요.
       ${staleDays !== null && staleDays > 0 ? `마지막 기록 ${staleDays}일 전. ` : ""}백업해 두세요.</span>
       <button class="btn" data-act="export">기록 내보내기</button></div>` : ""}
-    <div class="pt-bar">
-      <span class="t">오늘의 PT</span>
-      <span class="d">${todayTotal
-        ? `${todayTotal}장 · 다시 ${qc.relearn} · 복습 ${qc.review} · 신규 ${freshToday}`
-        : "오늘 볼 카드를 모두 끝냈어요"}</span>
-      <button class="btn" data-act="start-session" ${todayTotal ? "" : "disabled"}>시작</button>
+    <div class="home" data-view="${HOME_VIEW}">
+      <aside class="side">${homeMenuHtml()}</aside>
+      <div class="mainpane">
+        <button class="backrow" data-act="home-back">${ico("back")}메뉴</button>
+        ${homeMainHtml()}
+      </div>
     </div>
-    <div class="pt-sub">
-      <span>미니 골 ${Math.min(doneToday, 10)}/10장${doneToday >= 10 ? " 달성" : ""}</span>
-      <div class="bar"><div class="fill" style="width:${Math.min(100, doneToday * 10)}%"></div></div>
-      <span>${S.streakDays ? `스트릭 ${S.streakDays}일` : "오늘부터 시작"}</span>
-    </div>
-    <div class="navtabs">
-      <span class="nt on">서랍</span>
-      <a class="nt" href="#wrong">오답${weakN ? ` ${weakN}` : ""}</a>
-      ${qc.chronic ? `<button class="nt" data-act="start-chronic">${ico("bolt")} 고질 약점 ${qc.chronic}</button>` : ""}
-    </div>
-    ${drawerHtml()}
     <div class="sheeto" data-act="close-sheet"><div class="sheet"></div></div>
     <footer class="home-foot">
       <span id="syncfoot">${syncFootText()}</span>
@@ -686,8 +902,102 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   </div>`;
 }
 
+/* ---------- 내용 체계표: 표에 빈칸을 뚫는다 ----------
+   빈칸 하나가 카드 하나다. 자동 채점은 제안이고, 칸을 눌러 판정을 바꿀 수 있다.
+   합산과 저장은 고정 코드가 한다. */
+const CT_CAT_KO = { "지식⋅이해": "지식·이해", "과정⋅기능": "과정·기능", "가치⋅태도": "가치·태도" };
+const CT_CATS = ["지식⋅이해", "과정⋅기능", "가치⋅태도"];
+/* 과목마다 외울 범주가 다르다. 영어는 과정·기능만 본다.
+   고른 범주만 빈칸이 되고, 나머지는 원문을 펴 둔 채 배경으로 남는다.
+   범위 밖 칸은 오늘의 복습에도 안 나온다 (allSubs 에서 걸러진다). */
+const CT_SCOPE_DEFAULT = { "영어": ["과정⋅기능"] };
+function ctCats(subject) {
+  const saved = S.ctScope && S.ctScope[subject];
+  const list = saved || CT_SCOPE_DEFAULT[subject] || CT_CATS;
+  return new Set(list);
+}
+function setCtCats(subject, set) {
+  S.ctScope = S.ctScope || {};
+  S.ctScope[subject] = [...set];
+  persist();
+}
+function ctCatCount(quiz, cat) {
+  return quiz.questions.reduce((t, q) => t + q.subs.filter(s => s.ct.cat === cat).length, 0);
+}
+
+function ctScopeHtml(quiz) {
+  const on = ctCats(quiz.range);
+  const picked = CT_CATS.filter(c => on.has(c)).reduce((t, c) => t + ctCatCount(quiz, c), 0);
+  const all = CT_CATS.reduce((t, c) => t + ctCatCount(quiz, c), 0);
+  return `<div class="ctscope">
+    <div class="cs-head"><b>무엇을 외울까</b><span>고른 범주만 빈칸이 돼요. 이 과목에 저장돼요</span></div>
+    <div class="cs-row">${CT_CATS.map(c => {
+      const n = ctCatCount(quiz, c);
+      if (!n) return "";
+      return `<button class="ck" data-act="ct-cat" data-cat="${esc(c)}"
+        aria-pressed="${on.has(c)}">${esc(CT_CAT_KO[c])}<span class="n">${n}</span></button>`;
+    }).join("")}</div>
+    <p class="cs-sum">빈칸 <b>${picked}</b>칸${picked < all ? ` · 나머지 ${all - picked}칸은 펴 둬요` : ""}</p>
+  </div>`;
+}
+
+function ctTableHtml(quiz, q, qi) {
+  const byNo = new Map(q.subs.map((s, si) => [s.no, { s, si }]));
+  const cols = q.ct.cols;
+  const cats = ctCats(quiz.range);
+  const blank = (no) => {
+    const e = byNo.get(no); if (!e) return "";
+    // 범위 밖 범주는 문제가 아니라 배경이다. 원문을 그대로 펴 둔다
+    if (!cats.has(e.s.ct.cat)) return `<div class="ctoff">${esc(e.s.answer)}</div>`;
+    const id = subId(quiz, q, e.s);
+    const l = latest(id);
+    return `<div class="ctb" data-sid="${esc(id)}" data-ans="${esc(e.s.answer)}">
+      <input type="text" class="ctin" aria-label="내용 요소 빈칸" autocomplete="off" spellcheck="false">
+      <button class="ctmark" data-act="ct-mark" aria-label="판정 바꾸기"
+        >${l ? (l.r === "O" ? "O" : l.r === "X" ? "X" : "△") : ""}</button>
+      <span class="ctans"></span></div>`;
+  };
+  /* 지식·이해 아래 하위 구분이 없는 과목이 있다 (음악·미술 등). 그 표에선 열을 아예 뺀다 */
+  const hasSub = q.ct.rows.some(r => r.sub);
+  const rows = q.ct.rows.map(r => {
+    const cells = r.cells.map(c =>
+      `<td colspan="${c.span}">${c.ids.map(blank).join("")}</td>`).join("");
+    return `<tr><th class="ctcat">${esc(CT_CAT_KO[r.cat] || r.cat)}</th>
+      ${hasSub ? `<th class="ctsub">${esc(r.sub || "")}</th>` : ""}${cells}</tr>`;
+  }).join("");
+  return `
+    <section class="q-card ct-card" data-qi="${qi}">
+      <div class="q-head"><span class="qno">${esc(q.title)}</span>
+        <span class="qpts">빈칸 ${q.subs.length}</span></div>
+      <div class="q-frame">${esc(q.frame)}</div>
+      ${q.ct.ideas.length ? `<details class="ct-ideas"><summary>핵심 아이디어 ${q.ct.ideas.length}</summary>
+        <ul>${q.ct.ideas.map(i => `<li>${esc(i)}</li>`).join("")}</ul></details>` : ""}
+      <div class="ct-scroll"><table class="ctt">
+        <thead><tr><th></th>${hasSub ? "<th></th>" : ""}
+          ${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="ct-acts">
+        <button class="btn primary" data-act="ct-grade">채점하기</button>
+        <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
+        <span class="ct-score"></span>
+      </div>
+    </section>`;
+}
+
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
 function quizCardsHtml(quiz, weakOnly, pred) {
+  if (quiz.kind === "ct") {
+    return quiz.questions.map((q, qi) => {
+      if (!weakOnly && !pred) return ctTableHtml(quiz, q, qi);
+      const keep = q.subs.filter(s => {
+        const id = subId(quiz, q, s);
+        return (!weakOnly || isWeak(id)) && (!pred || pred(id));
+      });
+      if (!keep.length) return "";
+      return ctTableHtml(quiz, { ...q, subs: keep }, qi);
+    }).join("");
+  }
   return quiz.questions.map((q, qi) => {
     const subs = q.subs
       .map((sub, si) => ({ sub, si }))
@@ -726,6 +1036,7 @@ function renderQuiz(quizId, weakOnly) {
       <span class="ttl">${esc(quiz.title)}${weakOnly ? ' <span class="chip">틀린 것만</span>' : ""}</span>
       <span class="prog" id="prog">기록 ${doneSubs}/${totalSubs}</span>
     </div>
+    ${quiz.kind === "ct" ? ctScopeHtml(quiz) : ""}
     ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
       <ul>${quiz.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </details>` : ""}
@@ -956,12 +1267,22 @@ function renderCrush() {
   window.scrollTo(0, 0);
 }
 
-/* ---------- 오늘의 PT 세션 (10카드 라운드, Brainscape·Anki 패턴) ---------- */
+/* ---------- 세션 (한 장씩, 10카드 라운드. Brainscape·Anki 패턴) ---------- */
 let SESSION = null;
 const ROUND = 10;
 
+function startSession(mode, scope) {
+  const queue = buildQueue(mode, scope);
+  if (!queue.length) return false;
+  SESSION = { queue, scope: scope || null, mode, idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+  if (location.hash === "#today") renderSession();
+  else location.hash = "#today";
+  return true;
+}
+
 function renderSession() {
-  if (!SESSION) SESSION = { queue: buildQueue("today"), idx: 0, round: [], results: { O: 0, T: 0, X: 0 } };
+  /* 새로고침으로 SESSION을 잃으면 범위 없이 복습 전체로 되살린다 */
+  if (!SESSION) SESSION = { queue: buildQueue("today"), scope: null, mode: "today", idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
   if (!SESSION.queue.length) { SESSION = null; location.hash = ""; return; }
   if (SESSION.idx >= SESSION.queue.length) return renderCheckpoint(true);
   if (SESSION.round.length >= ROUND) return renderCheckpoint(false);
@@ -985,7 +1306,7 @@ function renderSession() {
       </div>
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
         ${sub.hideHead ? "" : `<span class="qpts">${esc(String(sub.no))}</span>`}</div>
-      ${q.body ? `<details class="ctx"><summary>지문·자료 펼치기</summary><div class="q-body md">${md(q.body)}</div></details>` : ""}
+      ${q.body ? `<details class="ctx" open><summary>지문·자료</summary><div class="q-body md">${md(q.body)}</div></details>` : ""}
       ${subBlockHtml(quiz, q, sub, qi, si)}
     </section>`;
   window.scrollTo(0, 0);
@@ -1004,6 +1325,7 @@ function renderCheckpoint(finished) {
   const pct = subs.length ? Math.round(mastered / subs.length * 100) : 0;
   const left = SESSION.queue.length - SESSION.idx;
   const done = goalToday();
+  const wrongN = SESSION.wrong ? SESSION.wrong.size : 0;
   $("#app").innerHTML = `
     <div class="checkpoint">
       <h2>${finished ? `${ico("check")} 오늘 큐 완주!` : "라운드 완료"}</h2>
@@ -1021,8 +1343,10 @@ function renderCheckpoint(finished) {
         ? `오늘의 미니 골 달성 · 스트릭 ${S.streakDays || 1}일`
         : `오늘 ${done}장 풀었어요. 미니 골까지 ${10 - done}장`}</p>
       ${autoBackedUp ? `<p class="cp-goal">기록 백업 파일을 자동으로 내려받았어요 (다운로드 폴더)</p>` : ""}
+      ${finished && wrongN ? `<p class="cp-goal">틀린 ${wrongN}장은 놓친 것만 다시 물어요</p>` : ""}
       <div class="cp-actions">
         ${finished ? "" : `<button class="btn primary big" data-act="next-round">다음 라운드 (남은 ${left}장)</button>`}
+        ${finished && wrongN ? `<button class="btn primary big" data-act="retry-wrong">틀린 것 ${wrongN}장 다시</button>` : ""}
         <button class="btn ghost" data-act="quit-session">오늘은 여기까지</button>
       </div>
     </div>`;
@@ -1245,16 +1569,29 @@ function onAppClick(e) {
     pushNow();
     return;
   }
-  if (act === "start-session" || act === "start-chronic") {
-    SESSION = {
-      queue: buildQueue(act === "start-chronic" ? "chronic" : "today"),
-      idx: 0, round: [], results: { O: 0, T: 0, X: 0 }
-    };
-    if (!SESSION.queue.length) { SESSION = null; return; }
-    if (location.hash === "#today") renderSession();
-    else location.hash = "#today";
+  if (act === "start-session" || act === "start-chronic" || act === "start-scope") {
+    const scope = act === "start-scope" ? (btn.dataset.scope || null) : null;
+    const mode = act === "start-chronic" ? "chronic" : (btn.dataset.mode || "today");
+    startSession(mode, scope);
     return;
   }
+  if (act === "retry-wrong") {
+    /* 한 바퀴 돌고 그날 틀린 것만 다시. 판정이 O가 아니라서 집중 인출이 걸린다.
+       AI가 만든 재질문(rq)이 있으면 놓친 요소만 다시 묻는다 */
+    const ids = SESSION ? [...SESSION.wrong] : [];
+    if (!ids.length) return;
+    const q = allSubs().filter(x => ids.includes(x.id)).map(x => ({ ...x, st: subState(x.id) }));
+    SESSION = { queue: q, scope: null, mode: "retry", idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+    renderSession();
+    return;
+  }
+  if (act === "home-go") {
+    HOME_SEL = btn.dataset.sel;
+    HOME_VIEW = "detail";
+    renderHome();
+    return;
+  }
+  if (act === "home-back") { HOME_VIEW = "menu"; renderHome(); return; }
   if (act === "quit-session") {
     SESSION = null;
     if (location.hash && location.hash !== "#") location.hash = "";
@@ -1449,13 +1786,74 @@ function onAppClick(e) {
   }
   if (act === "crush-resume") { CRUSH = loadCrush(); if (CRUSH) location.hash = "#crush"; return; }
   if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
-  if (act === "toggle-subject") {
-    DRAWER_OPEN[btn.dataset.subj] = !DRAWER_OPEN[btn.dataset.subj];
-    renderHome();
+  if (act === "ct-cat") {
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!quiz) return;
+    const set = ctCats(quiz.range);
+    const c = btn.dataset.cat;
+    set.has(c) ? set.delete(c) : set.add(c);
+    if (!set.size) return;   // 하나는 켜 둔다. 다 끄면 풀 게 없다
+    setCtCats(quiz.range, set);
+    renderQuiz(quiz.id, false);
+    return;
+  }
+  if (act === "ct-grade" || act === "ct-reveal") {
+    const card = btn.closest(".ct-card");
+    const reveal = act === "ct-reveal";
+    let ok = 0, all = 0;
+    card.querySelectorAll(".ctb").forEach(b => {
+      const inp = b.querySelector(".ctin");
+      const ans = b.dataset.ans;
+      const hit = norm(inp.value) !== "" && norm(inp.value) === norm(ans);
+      all++;
+      if (hit) ok++;
+      b.classList.toggle("hit", hit);
+      b.classList.toggle("miss", !hit);
+      b.querySelector(".ctmark").textContent = hit ? "O" : "X";
+      // 틀렸거나 그냥 보기면 원문을 옆에 편다
+      b.querySelector(".ctans").textContent = (!hit || reveal) ? ans : "";
+      inp.readOnly = true;
+      /* 자동 판정은 제안이다. 합산·저장은 고정 코드가 하고, 칸을 눌러 바꿀 수 있다 */
+      if (!reveal) {
+        record(b.dataset.sid, hit ? "O" : "X", hit ? "O" : "X", hit ? null : [ans], "");
+        bumpGoal();   // 빈칸 하나가 카드 하나이므로 칸마다 센다
+      }
+    });
+    card.classList.add("graded");
+    card.querySelector(".ct-score").textContent =
+      reveal ? `빈칸 ${all}개` : `${all}칸 중 ${ok}칸${ok === all ? " · 다 맞혔어요" : ""}`;
+    if (!reveal) persist();
+    return;
+  }
+  if (act === "ct-mark") {
+    /* 칸 판정 고치기: 모름 → 부분 → 완벽 → 모름. 채점 전에는 누를 게 없다 */
+    const b = btn.closest(".ctb");
+    if (!b.closest(".ct-card").classList.contains("graded")) return;
+    const cur = btn.textContent.trim();
+    const next = cur === "X" ? "△" : cur === "△" ? "O" : "X";
+    btn.textContent = next;
+    b.classList.toggle("hit", next === "O");
+    b.classList.toggle("miss", next !== "O");
+    if (next !== "O") b.querySelector(".ctans").textContent = b.dataset.ans;
+    record(b.dataset.sid, next === "△" ? "T" : next, null, next === "O" ? null : [b.dataset.ans], "");
+    persist(); schedulePush();
+    const card = b.closest(".ct-card");
+    const marks = [...card.querySelectorAll(".ctmark")];
+    const okN = marks.filter(m => m.textContent.trim() === "O").length;
+    card.querySelector(".ct-score").textContent = `${marks.length}칸 중 ${okN}칸`;
     return;
   }
   if (act === "open-range") {
-    if (btn.dataset.single) { location.hash = "#q/" + btn.dataset.single; return; }
+    /* 영역 하나에 모드가 하나뿐이면 바로 한 장씩 풀기로 들어간다.
+       기출·복습 두 벌이면 어느 쪽인지 골라야 하니 시트를 연다. */
+    if (btn.dataset.single) {
+      const z = DATA.find(d => d.id === btn.dataset.single);
+      /* 내용 체계표는 표를 통째로 보고 빈칸을 채우는 화면으로 간다.
+         한 장씩 넘기면 표에서 어느 칸이었는지가 사라진다 */
+      if (z && z.kind === "ct") { location.hash = "#q/" + z.id; return; }
+      startSession("all", "qz:" + btn.dataset.single);
+      return;
+    }
     openRangeSheet(btn.dataset.range);
     return;
   }
@@ -1536,8 +1934,16 @@ function onAppClick(e) {
     record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "");
     draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
-    subEl.querySelector(".saved-msg").textContent = "기록됨";
-    const head = subEl.querySelector(".sub-head");
+    const saved = subEl.querySelector(".saved-msg");
+    if (saved) saved.textContent = "기록됨";
+    /* hideHead 카드(단권화)는 기록이 없으면 .sub-head 자체가 없다.
+       여기서 만들지 않으면 첫 판정에서 예외가 나고 세션이 다음 카드로 못 넘어간다 */
+    let head = subEl.querySelector(".sub-head");
+    if (!head) {
+      head = document.createElement("div");
+      head.className = "sub-head";
+      subEl.prepend(head);
+    }
     head.querySelector(".dots")?.remove();
     head.insertAdjacentHTML("beforeend", dotsHtml(id));
     // 세션 모드: 골 카운트 + 다음 카드로 자동 진행
@@ -1547,6 +1953,9 @@ function onAppClick(e) {
         bumpGoal();
         SESSION.results[btn.dataset.v]++;
         SESSION.round.push(btn.dataset.v);
+        // 그날 틀린 것은 한 바퀴 끝에 재질문으로 다시 묻는다
+        if (btn.dataset.v !== "O") (SESSION.wrong = SESSION.wrong || new Set()).add(id);
+        else SESSION.wrong?.delete(id);
         // 몰랐다 카드는 이번 세션 큐 끝에 다시 들어온다 (같은 세션 재학습)
         if (btn.dataset.v === "X") SESSION.queue.push(SESSION.queue[SESSION.idx]);
         SESSION.idx++;
@@ -1630,6 +2039,8 @@ function onImportFile(e) {
 /* ---------- 라우터 ---------- */
 function render() {
   stopMic();
+  /* 홈은 2단이라 720px로는 본문이 500px밖에 안 남는다. 읽기 화면(퀴즈·세션)은 720px가 맞다 */
+  document.body.dataset.screen = (!location.hash || location.hash === "#") ? "home" : "read";
   if (location.hash === "#today") { renderSession(); return; }
   if (location.hash === "#crush") {
     if (!CRUSH) CRUSH = loadCrush(); // 나갔다 돌아와도 이어서
