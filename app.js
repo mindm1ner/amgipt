@@ -253,7 +253,9 @@ function persist() { localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(
 function subId(quiz, q, sub) { return quiz.id + "|" + q.no + "|" + sub.no; }
 function history(id) { return S.records[id] || []; }
 function latest(id) { const h = history(id); return h.length ? h[h.length - 1] : null; }
-function record(id, r, auto, miss, rq) {
+/* err = 표 빈칸 오답 유형 {t 유형, r 헷갈린 칸 번호, w 내가 쓴 것, n 한 줄 진단}.
+   같은 줄에 x로 붙는다. 오답 노트이자 "자주 틀리는 칸만 빈칸"의 재료 */
+function record(id, r, auto, miss, rq, err) {
   const h = S.records[id] || (S.records[id] = []);
   const t = Date.now();
   const last = h[h.length - 1];
@@ -269,8 +271,9 @@ function record(id, r, auto, miss, rq) {
     last.r = r; last.a = auto || last.a; last.t = t;
     if (m) last.m = m; else delete last.m;
     if (q) last.rq = q; else delete last.rq;
+    if (err) last.x = err; else if (r === "O" && !err) delete last.x;
   }
-  else h.push({ d: todayStr(), r, a: auto || null, t, ...(m ? { m } : {}), ...(q ? { rq: q } : {}) });
+  else h.push({ d: todayStr(), r, a: auto || null, t, ...(m ? { m } : {}), ...(q ? { rq: q } : {}), ...(err ? { x: err } : {}) });
   persist();
 }
 
@@ -1029,6 +1032,142 @@ function ctMove(from, dir) {
   el.focus();
   const at = dir === "right" ? 0 : el.value.length;   // 오른쪽으로 넘어갈 땐 글 맨 앞에 커서
   try { el.setSelectionRange(at, at); } catch (_) {}
+}
+
+/* ---------- 표 빈칸 오답 유형 진단 ----------
+   표의 오답은 서술형과 갈래가 다르다. 말이 미묘하게 어긋난 것과,
+   내용은 아는데 **자리**를 잘못 짚은 것(학년군·영역 바꿔 쓰기)이 갈려야 한다.
+   자리 바꿈은 글자가 똑같으므로 고정 코드가 먼저 확실히 잡고, 해석만 AI에 맡긴다. */
+const CT_ERR_KO = {
+  ok_form: "표기 차이", partial: "일부만", grade: "학년군 바뀜", area: "영역 바뀜",
+  mix: "두 칸 섞임", confuse: "다른 개념", other: "다른 내용", blank: "안 씀"
+};
+
+function ctCardCtx(card) {
+  const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+  if (!quiz) return null;
+  const q = quiz.questions[+card.dataset.qi];
+  if (!q || !q.ct) return null;
+  const area = new Map();   // 칸 번호 → 행 이름(영역). 행에만 있고 칸에는 없다
+  q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => area.set(id, r.sub || ""))));
+  return { quiz, q, area };
+}
+function ctWhere(s, area) {
+  const a = area && area.get(s.no);
+  return `${(s.ct.cat || "").replace("⋅", "·")} · ${a ? a + " · " : ""}${s.ct.gr}`;
+}
+
+/* 쓴 답이 이 표의 다른 칸 정답과 글자 그대로 같은가 (자리 바꿔 넣기) */
+function ctMisplaced(q, sub, val) {
+  const n = norm(val);
+  if (!n) return null;
+  const other = q.subs.find(s => s.no !== sub.no && norm(s.answer) === n);
+  if (!other) return null;
+  return { t: (other.ct.cat === sub.ct.cat && other.ct.gr !== sub.ct.gr) ? "grade" : "area", ref: other.no, other };
+}
+
+function ctNoteEl(b, type, text) {
+  let el = b.querySelector(".ctnote");
+  if (!el) { el = document.createElement("div"); el.className = "ctnote"; b.appendChild(el); }
+  el.innerHTML = `<span class="cttag t-${esc(type)}">${esc(CT_ERR_KO[type] || type)}</span>${text ? " " + esc(text) : ""}`;
+}
+function ctDiagBox(card) {
+  let el = card.querySelector(".ct-diag");
+  if (!el) { el = document.createElement("div"); el.className = "ct-diag"; card.appendChild(el); }
+  return el;
+}
+function ctRescore(card) {
+  const marks = [...card.querySelectorAll(".ctmark")];
+  const okN = marks.filter(m => m.textContent.trim() === "O").length;
+  card.querySelector(".ct-score").textContent = `${marks.length}칸 중 ${okN}칸`;
+}
+
+async function aiJudgeTable(topic, cells, asked) {
+  let res;
+  try {
+    res = await fetch(AI_FN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", apikey: AI_FN_KEY, Authorization: "Bearer " + AI_FN_KEY },
+      body: JSON.stringify({ type: "grade_table", topic, cells, asked })
+    });
+  } catch { throw new Error("서버 연결 안 됨"); }
+  const text = await res.text();
+  if (!res.ok) throw new Error("HTTP " + res.status + (res.status === 400 ? " (함수가 옛 버전. grade_table 배포 필요)" : ""));
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error("응답 형식 오류"); }
+  if (data.error) throw new Error(String(data.error).slice(0, 80));
+  return data;
+}
+
+async function ctDiagnose(card) {
+  const ctx = ctCardCtx(card);
+  if (!ctx) return;
+  const { quiz, q, area } = ctx;
+  const byNo = new Map(q.subs.map(s => [s.no, s]));
+  const wrong = [];
+  card.querySelectorAll(".ctb.miss").forEach(b => {
+    const no = String(b.dataset.sid).split("|").pop();
+    const sub = byNo.get(no);
+    if (!sub) return;
+    const val = b.querySelector(".ctin").value.trim();
+    wrong.push({ b, no, sub, val, mis: ctMisplaced(q, sub, val) });
+  });
+  if (!wrong.length) return;
+
+  /* 1) 고정 코드가 확실히 아는 것부터 (AI가 꺼져 있어도, 실패해도 남는다) */
+  for (const w of wrong) {
+    if (!w.val) { ctSaveErr(w, { t: "blank", w: "", n: "" }); continue; }
+    if (!w.mis) continue;
+    const note = `${ctWhere(w.mis.other, area)} 칸의 내용이에요`;
+    ctNoteEl(w.b, w.mis.t, note);
+    ctSaveErr(w, { t: w.mis.t, r: w.mis.ref, w: w.val, n: note });
+  }
+
+  const box = ctDiagBox(card);
+  const asked = wrong.filter(w => w.val);
+  if (!asked.length) { box.remove(); return; }
+  if (!aiOn()) { box.innerHTML = `<div class="cd-sum">AI 진단이 꺼져 있어요. 자리를 바꿔 쓴 것만 표시했어요</div>`; return; }
+
+  /* 2) 나머지 해석은 AI. 표 전체를 같이 보내야 "어느 칸의 내용인지"를 짚을 수 있다 */
+  box.innerHTML = `<div class="cd-sum">${ico("spark")} 오답을 보는 중</div>`;
+  try {
+    const data = await aiJudgeTable(
+      `${quiz.range} · ${q.title}`,
+      q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr, ans: s.answer })),
+      asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" }))
+    );
+    const byId = new Map(wrong.map(w => [w.no, w]));
+    const lines = [];
+    for (const it of (data.items || [])) {
+      const w = byId.get(String(it.no));
+      if (!w) continue;
+      const type = CT_ERR_KO[it.type] ? it.type : "other";
+      const note = (it.note || "").trim();
+      ctNoteEl(w.b, type, note);
+      /* 판정 제안은 AI, 합산·저장은 고정 코드 (칸을 눌러 언제든 바꿀 수 있다) */
+      const r = it.verdict === "good" ? "O" : it.verdict === "partial" ? "T" : "X";
+      const mark = r === "O" ? "O" : r === "T" ? "△" : "X";
+      w.b.querySelector(".ctmark").textContent = mark;
+      w.b.classList.toggle("hit", r === "O");
+      w.b.classList.toggle("miss", r !== "O");
+      ctSaveErr(w, { t: type, r: String(it.ref || ""), w: w.val, n: note }, r);
+      lines.push({ ans: w.sub.answer, val: w.val, type, note, where: ctWhere(w.sub, area) });
+    }
+    ctRescore(card);
+    box.innerHTML =
+      `<div class="cd-sum">${ico("spark")} <b>AI 오답 노트</b> ${esc(data.summary || "")}</div>` +
+      (lines.length ? `<ul class="cd-list">${lines.map(l => `<li>
+        <span class="cttag t-${esc(l.type)}">${esc(CT_ERR_KO[l.type])}</span>
+        <b>${esc(l.ans)}</b> <span class="cd-where">${esc(l.where)}</span>
+        <div class="cd-mine">내가 쓴 것: ${esc(l.val)}${l.note ? " · " + esc(l.note) : ""}</div></li>`).join("")}</ul>` : "");
+  } catch (e) {
+    box.innerHTML = `<div class="cd-sum">AI 진단 실패(${esc(e && e.message ? e.message : "오류")}). 자리를 바꿔 쓴 것만 표시했어요</div>`;
+  }
+}
+
+/* 오답 유형을 기록에 남긴다. 이 기록이 오답 노트이자, 나중에 "자주 틀리는 칸만 빈칸" 의 재료다 */
+function ctSaveErr(w, err, r) {
+  record(w.b.dataset.sid, r || "X", null, r === "O" ? null : [w.sub.answer], "", err);
 }
 
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
@@ -1868,7 +2007,10 @@ function onAppClick(e) {
     card.classList.add("graded");
     card.querySelector(".ct-score").textContent =
       reveal ? `빈칸 ${all}개` : `${all}칸 중 ${ok}칸${ok === all ? " · 다 맞혔어요" : ""}`;
-    if (!reveal) persist();
+    if (!reveal) {
+      persist();
+      ctDiagnose(card);   // 오답 유형 진단: 고정 코드로 자리 바꿈부터, 그다음 AI
+    }
     return;
   }
   if (act === "ct-mark") {

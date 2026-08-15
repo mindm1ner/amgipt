@@ -650,6 +650,27 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 .ct-score { font-size: .8rem; color: var(--sub); font-weight: 600; }
 .ct-tip { font-size: .74rem; color: var(--sub); margin-left: auto; }
 .ct-card.graded .ct-tip { display: none; }
+
+/* 오답 유형: 칸 밑 한 줄 + 카드 아래 오답 노트 */
+.ctnote { flex-basis: 100%; font-size: .72rem; color: var(--sub); line-height: 1.5; padding-left: 2px; }
+.cttag {
+  display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--warnb); background: var(--warn-bg); color: var(--warn); margin-right: 4px;
+}
+.cttag.t-ok_form { border-color: var(--okb); background: var(--ok-bg); color: var(--ok); }
+.cttag.t-other, .cttag.t-blank, .cttag.t-confuse {
+  border-color: var(--nob); background: var(--no-bg); color: var(--no);
+}
+.ct-diag {
+  margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--hover); font-size: .82rem; line-height: 1.6;
+}
+.ct-diag .cd-sum { color: var(--ink); display: flex; gap: 6px; align-items: baseline; }
+.ct-diag .cd-sum svg { flex: none; }
+.cd-list { list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
+.cd-list li { padding: 6px 0; }
+.cd-where { font-size: .74rem; color: var(--sub); }
+.cd-mine { font-size: .78rem; color: var(--sub); padding-left: 2px; }
 .ct-card.graded .ct-acts .btn { display: none; }
 @media (max-width: 560px) {
   table.ctt th.ctsub { width: 84px; font-size: .7rem; }
