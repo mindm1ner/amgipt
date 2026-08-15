@@ -1042,14 +1042,20 @@ const CT_ERR_KO = {
   ok_form: "표기 차이", partial: "일부만", grade: "학년군 바뀜", area: "영역 바뀜",
   mix: "두 칸 섞임", confuse: "다른 개념", other: "다른 내용", blank: "안 씀"
 };
+/* AI가 칸 번호를 "1"로도 "1번"으로도 "1,4"로도 돌려준다. 맨 앞 숫자만 뽑아서 맞춘다 —
+   글자 그대로 대조하면 그 칸의 진단이 조용히 사라지고,
+   숫자를 전부 이으면 "1,4"가 14번 칸이 되어 엉뚱한 칸을 가리킨다 */
+function ctNo(x) { const m = String(x == null ? "" : x).match(/\d+/); return m ? m[0] : ""; }
 
 function ctCardCtx(card) {
   const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
   if (!quiz) return null;
   const q = quiz.questions[+card.dataset.qi];
   if (!q || !q.ct) return null;
-  const area = new Map();   // 칸 번호 → 행 이름(영역). 행에만 있고 칸에는 없다
-  q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => area.set(id, r.sub || ""))));
+  /* 칸 번호 → 영역. 표 문항 하나가 영역 하나라 기본은 q.title,
+     그 아래 한 겹 더 갈리는 과목(영어)만 행의 sub를 쓴다 */
+  const area = new Map();
+  q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => area.set(id, r.sub || q.title || ""))));
   return { quiz, q, area };
 }
 function ctWhere(s, area) {
@@ -1136,10 +1142,10 @@ async function ctDiagnose(card) {
       q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr, ans: s.answer })),
       asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" }))
     );
-    const byId = new Map(wrong.map(w => [w.no, w]));
+    const byId = new Map(wrong.map(w => [ctNo(w.no), w]));
     const lines = [];
     for (const it of (data.items || [])) {
-      const w = byId.get(String(it.no));
+      const w = byId.get(ctNo(it.no));
       if (!w) continue;
       const type = CT_ERR_KO[it.type] ? it.type : "other";
       const note = (it.note || "").trim();
@@ -1150,7 +1156,7 @@ async function ctDiagnose(card) {
       w.b.querySelector(".ctmark").textContent = mark;
       w.b.classList.toggle("hit", r === "O");
       w.b.classList.toggle("miss", r !== "O");
-      ctSaveErr(w, { t: type, r: String(it.ref || ""), w: w.val, n: note }, r);
+      ctSaveErr(w, { t: type, r: ctNo(it.ref), w: w.val, n: note }, r);
       lines.push({ ans: w.sub.answer, val: w.val, type, note, where: ctWhere(w.sub, area) });
     }
     ctRescore(card);
@@ -1168,6 +1174,135 @@ async function ctDiagnose(card) {
 /* 오답 유형을 기록에 남긴다. 이 기록이 오답 노트이자, 나중에 "자주 틀리는 칸만 빈칸" 의 재료다 */
 function ctSaveErr(w, err, r) {
   record(w.b.dataset.sid, r || "X", null, r === "O" ? null : [w.sub.answer], "", err);
+}
+
+/* ---------- 맥락형 오답 유형 진단 ----------
+   맥락형은 표를 안 보여주고 수업 장면 하나만 준다. 그래서 내가 쓴 답이 사실 **옆 칸의 내용**
+   이었다는 것을 본인은 알 방법이 없다. 표 빈칸형과 같은 갈래로 짚어 주되, 대조할 표를
+   같은 과목 내체표(ct-{과목})에서 끌어온다. 유형·화면·기록은 표 빈칸형과 똑같이 쓴다. */
+function ctxCells(range) {
+  const ct = DATA.find(z => z.kind === "ct" && z.range === range);
+  if (!ct) return null;
+  const out = [];
+  for (const q of ct.questions) {
+    /* 영역은 표 **문항 하나 = 영역 하나**로 잡혀 있다 (q.title). rows의 sub는 그 아래
+       한 겹 더 갈리는 과목(영어)에서만 채워진다. 맥락형의 area 값과 맞는 쪽은 q.title */
+    const sub2 = new Map();
+    ((q.ct && q.ct.rows) || []).forEach(r =>
+      r.cells.forEach(c => c.ids.forEach(id => { if (r.sub) sub2.set(id, r.sub); })));
+    for (const s of q.subs) {
+      out.push({
+        no: String(out.length + 1),               // 표 밖에서 쓰는 번호라 이어서 새로 매긴다
+        cat: (s.ct.cat || "").replace("⋅", "·"),
+        area: q.title || "",
+        sub2: sub2.get(s.no) || "",
+        gr: s.ct.gr || "",
+        ans: s.answer
+      });
+    }
+  }
+  return out;
+}
+function ctxWhere(c) {
+  return `${c.cat}${c.area ? " · " + c.area : ""}${c.sub2 ? " · " + c.sub2 : ""} · ${c.gr}`;
+}
+function ctxMe(sub) {
+  return { cat: (sub.ct.cat || "").replace("⋅", "·"), area: sub.ct.area || "", gr: sub.ct.gr || "" };
+}
+function ctxSame(c, me) { return c.cat === me.cat && c.area === me.area && c.gr === me.gr; }
+
+/* 쓴 답이 내체표 **다른 칸**의 정답과 글자 그대로 같은가 (자리 바꿔 넣기).
+   같은 글자가 표 안에 여러 번 나오는 과목이 있어서(영어·음악 11건), 자기 답과 같으면
+   먼저 물러나고, 후보가 여럿이면 학년군만 어긋난 칸을 앞세운다 */
+function ctxMisplaced(cells, sub, val) {
+  const n = norm(val);
+  if (!n || n === norm(sub.answer)) return null;
+  const me = ctxMe(sub);
+  const hits = cells.filter(c => norm(c.ans) === n && !ctxSame(c, me));
+  if (!hits.length) return null;
+  const hit = hits.find(c => c.cat === me.cat && c.area === me.area) || hits[0];
+  return { t: (hit.cat === me.cat && hit.area === me.area) ? "grade" : "area", cell: hit };
+}
+
+async function ctxDiagnose(subEl, quiz, q, sub, val) {
+  if (!sub || !sub.ct) return;
+  const cells = ctxCells(quiz.range);
+  if (!cells || !cells.length) return;
+  const rev = subEl.querySelector(".reveal");
+  if (!rev) return;
+  const box = document.createElement("div");
+  box.className = "ct-diag";
+  const chips = rev.querySelector(".kw-chips");
+  if (chips) chips.after(box); else rev.prepend(box);
+
+  const setErr = (err) => { subEl.dataset.cterr = JSON.stringify(err); };
+
+  if (!norm(val)) {
+    box.innerHTML = `<div class="cd-sum"><span class="cttag t-blank">${CT_ERR_KO.blank}</span></div>`;
+    setErr({ t: "blank", w: "", n: "" });
+    return;
+  }
+
+  /* 1) 고정 코드가 확실히 아는 것부터 (AI가 꺼져 있어도, 실패해도 남는다) */
+  const mis = ctxMisplaced(cells, sub, val);
+  if (mis) {
+    const note = `${ctxWhere(mis.cell)} 칸의 내용이에요`;
+    box.innerHTML = `<div class="cd-sum"><span class="cttag t-${mis.t}">${CT_ERR_KO[mis.t]}</span>${esc(note)}</div>`;
+    setErr({ t: mis.t, r: mis.cell.no, w: val, n: note });
+  }
+  if (!aiOn()) { if (!mis) box.remove(); return; }
+
+  /* 2) 해석은 AI. 표 전체는 너무 크니 같은 범주만 보내되, 자리 바꿔 쓴 칸은 꼭 끼워 넣는다 */
+  const me = ctxMe(sub);
+  let send = cells.filter(c => c.cat === me.cat);
+  if (mis && !send.some(c => c.no === mis.cell.no)) send = send.concat([mis.cell]);
+  let target = send.find(c => ctxSame(c, me) && norm(c.ans) === norm(sub.answer));
+  if (!target) {   // 내체표에 없는 칸이면(데이터 어긋남) 이 문항의 정답을 칸으로 얹는다
+    target = { no: String(cells.length + 1), cat: me.cat, area: me.area, gr: me.gr, ans: sub.answer };
+    send = send.concat([target]);
+  }
+  send = send.slice(0, 70);
+
+  box.innerHTML += `<div class="cd-sum">${ico("spark")} 오답을 보는 중</div>`;
+  try {
+    const data = await aiJudgeTable(
+      `${quiz.range} · ${q.title}`, send,
+      [{ no: target.no, val, hint: mis ? `${ctxWhere(mis.cell)} 칸의 정답과 글자가 같음` : "" }]
+    );
+    const it = (data.items || [])[0];
+    if (!it) throw new Error("응답이 비었어요");
+    const type = CT_ERR_KO[it.type] ? it.type : "other";
+    const note = (it.note || "").trim();
+    const refCell = ctNo(it.ref) ? send.find(c => ctNo(c.no) === ctNo(it.ref)) : null;
+    box.innerHTML =
+      `<div class="cd-sum">${ico("spark")} <b>AI 오답 노트</b> ${esc(data.summary || "")}</div>` +
+      `<ul class="cd-list"><li>
+        <span class="cttag t-${esc(type)}">${esc(CT_ERR_KO[type])}</span>
+        <b>${esc(sub.answer)}</b> <span class="cd-where">${esc(ctxWhere(target))}</span>
+        <div class="cd-mine">내가 쓴 것: ${esc(val)}${note ? " · " + esc(note) : ""}</div>
+        ${refCell ? `<div class="cd-mine">그 내용이 들어갈 칸: ${esc(ctxWhere(refCell))}</div>` : ""}
+      </li></ul>`;
+    setErr({ t: type, r: ctNo(it.ref), w: val, n: note });
+
+    /* 판정 제안은 AI, 확정은 언제나 본인 (표 빈칸형과 같은 규칙) */
+    if (!subEl.querySelector(".vbtn.chosen")) {
+      const v = it.verdict === "good" ? "O" : it.verdict === "partial" ? "T" : "X";
+      subEl.dataset.suggest = v;
+      subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("suggest", b.dataset.v === v));
+      const lbl = subEl.querySelector(".vlbl");
+      if (lbl) lbl.textContent = `내 판정 (제안: ${vName(v)})`;
+      const chip = subEl.querySelector(".kw");
+      if (chip && v === "O") {
+        chip.classList.remove("miss"); chip.classList.add("hit", "ai");
+        chip.textContent = "✓ " + chip.textContent.replace(/^[✓✗△]\s*/, "") + " (의미)";
+        if (note) chip.title = note;
+      }
+    }
+  } catch (e) {
+    box.innerHTML = mis
+      ? `<div class="cd-sum"><span class="cttag t-${mis.t}">${CT_ERR_KO[mis.t]}</span>${esc(ctxWhere(mis.cell))} 칸의 내용이에요</div>`
+      : `<div class="cd-sum">AI 진단 실패(${esc(e && e.message ? e.message : "오류")})</div>`;
+  }
 }
 
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
@@ -1498,10 +1633,12 @@ function renderSession() {
 }
 
 function renderCheckpoint(finished) {
-  // 자동 백업: 마지막 백업이 3일 넘었으면 라운드 끝에 기록 JSON을 조용히 내려받는다
+  /* 자동 백업: 마지막 백업이 3일 넘었으면 라운드 끝에 기록 JSON을 조용히 내려받는다.
+     단 서버 동기화가 되고 있으면 내려받지 않는다 — 기록은 이미 서버에 있고,
+     라운드마다 파일이 떨어지면 그게 더 성가시다 (백업 배너와 같은 조건) */
   let autoBackedUp = false;
   const recCount = Object.values(S.records).reduce((a, h) => a + h.length, 0);
-  if (recCount && (!S.lastExport || Date.now() - S.lastExport > 3 * DAY)) {
+  if (recCount && SYNC_STATE !== "ok" && (!S.lastExport || Date.now() - S.lastExport > 3 * DAY)) {
     try { doExport(); autoBackedUp = true; } catch { /* 무시 */ }
   }
   const r = SESSION.results;
@@ -1666,6 +1803,12 @@ function showReveal(subEl, graded) {
       const nm = p.label + ": " + p.accept[0];
       return `<span class="kw ${flags[i] ? "hit" : "miss"}" data-act="kw-toggle" data-name="${esc(nm)}">${flags[i] ? "✓" : "✗"} ${esc(nm)}</span>`;
     }).join("") + "</div>";
+    /* 맥락형 내체표는 틀렸을 때 유형까지 갈라 준다. 표를 안 보여주는 형식이라
+       내가 쓴 답이 옆 칸 내용이었다는 것을 본인은 알 수 없다 (reveal 이 그려진 뒤에 붙인다) */
+    const ctxOwner = findSub(subEl);
+    if (ctxOwner.quiz.kind === "ctx" && sub.ct && !flags[0]) {
+      setTimeout(() => ctxDiagnose(subEl, ctxOwner.quiz, ctxOwner.q, sub, inputs[0] || ""), 0);
+    }
   } else if (graded && sub.type === "essay") {
     // 질문별 답변 칸 모드: 각 답변을 그 질문의 키워드로만 1:1 채점
     const fqEls = [...subEl.querySelectorAll("textarea.answer[data-fq]")];
@@ -2119,7 +2262,10 @@ function onAppClick(e) {
   if (act === "verdict") {
     const { quiz, id } = findSub(subEl);
     const missNames = [...subEl.querySelectorAll(".kw.miss")].map(c => c.dataset.name).filter(Boolean);
-    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "");
+    /* 맥락형 오답 유형(ctxDiagnose가 남긴 것)도 같이 기록한다. 완벽으로 확정하면 유형은 지운다 */
+    let cterr = null;
+    try { cterr = btn.dataset.v === "O" ? null : JSON.parse(subEl.dataset.cterr || "null"); } catch (_) { /* 무시 */ }
+    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "", cterr);
     draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
     const saved = subEl.querySelector(".saved-msg");
