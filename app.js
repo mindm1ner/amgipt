@@ -927,8 +927,6 @@ function ctCatCount(quiz, cat) {
 
 function ctScopeHtml(quiz) {
   const on = ctCats(quiz.range);
-  const picked = CT_CATS.filter(c => on.has(c)).reduce((t, c) => t + ctCatCount(quiz, c), 0);
-  const all = CT_CATS.reduce((t, c) => t + ctCatCount(quiz, c), 0);
   return `<div class="ctscope">
     <div class="cs-head"><b>무엇을 외울까</b><span>고른 범주만 빈칸이 돼요. 이 과목에 저장돼요</span></div>
     <div class="cs-row">${CT_CATS.map(c => {
@@ -937,7 +935,6 @@ function ctScopeHtml(quiz) {
       return `<button class="ck" data-act="ct-cat" data-cat="${esc(c)}"
         aria-pressed="${on.has(c)}">${esc(CT_CAT_KO[c])}<span class="n">${n}</span></button>`;
     }).join("")}</div>
-    <p class="cs-sum">빈칸 <b>${picked}</b>칸${picked < all ? ` · 나머지 ${all - picked}칸은 펴 둬요` : ""}</p>
   </div>`;
 }
 
@@ -981,8 +978,57 @@ function ctTableHtml(quiz, q, qi) {
         <button class="btn primary" data-act="ct-grade">채점하기</button>
         <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
         <span class="ct-score"></span>
+        <span class="ct-tip">엔터는 아래 칸, 방향키는 상하좌우</span>
       </div>
     </section>`;
+}
+
+/* ---------- 표 빈칸 사이 이동 (엔터 = 아래 칸, 방향키 = 상하좌우) ----------
+   colspan·한 칸에 빈칸 여러 개가 섞여 있어 표 모델로는 위치가 안 잡힌다.
+   그래서 화면에 그려진 좌표로 "보이는 대로" 옆 칸을 찾는다. */
+function ctNext(from, dir) {
+  const card = from.closest(".ct-card");
+  if (!card) return null;
+  const all = [...card.querySelectorAll("input.ctin")];
+  if (all.length < 2) return null;
+  const r0 = from.getBoundingClientRect();
+  const vert = dir === "up" || dir === "down";
+  const cands = [];
+  for (const el of all) {
+    if (el === from) continue;
+    const r = el.getBoundingClientRect();
+    /* 칸마다 너비가 달라 중심점으로 재면 같은 열이 옆 열로 잡힌다. 그래서 가장자리로 잰다.
+       main = 가려는 쪽으로 벌어진 틈, cross = 줄(열)이 어긋난 정도 */
+    const main = dir === "down" ? r.top - r0.bottom
+      : dir === "up" ? r0.top - r.bottom
+      : dir === "right" ? r.left - r0.right
+      : r0.left - r.right;
+    const cross = vert ? Math.abs(r.left - r0.left) : Math.abs(r.top - r0.top);
+    if (main > -2) cands.push({ el, main, cross });   // 겹치는 칸(같은 줄)은 후보가 아니다
+  }
+  if (!cands.length) {
+    // 맨 아래에서 엔터를 치면 오른쪽 열 맨 위로 넘어간다 (열 단위로 채워 나가게)
+    if (dir !== "down") return null;
+    const right = all.map(el => ({ el, r: el.getBoundingClientRect() }))
+      .filter(o => o.r.left > r0.left + 6);
+    if (!right.length) return null;
+    const minX = Math.min(...right.map(o => o.r.left));
+    return right.filter(o => o.r.left <= minX + 6)
+      .reduce((a, b) => (b.r.top < a.r.top ? b : a)).el;
+  }
+  // 가장 가까운 한 줄을 먼저 고르고, 그 줄 안에서 열이 제일 잘 맞는 칸으로 간다
+  const minMain = Math.min(...cands.map(c => c.main));
+  const tol = vert ? Math.max(10, from.offsetHeight * 0.9)
+                   : Math.max(10, from.offsetWidth * 0.4);
+  return cands.filter(c => c.main <= minMain + tol)
+    .reduce((a, b) => (b.cross < a.cross ? b : a)).el;
+}
+function ctMove(from, dir) {
+  const el = ctNext(from, dir);
+  if (!el) return;
+  el.focus();
+  const at = dir === "right" ? 0 : el.value.length;   // 오른쪽으로 넘어갈 땐 글 맨 앞에 커서
+  try { el.setSelectionRange(at, at); } catch (_) {}
 }
 
 /* ---------- 퀴즈 페이지 (전체 보기) ---------- */
@@ -2065,6 +2111,26 @@ document.addEventListener("input", e => {
   const key = t.dataset.part !== undefined ? id + "#" + t.dataset.part
     : t.dataset.fq !== undefined ? id + "#fq" + t.dataset.fq : id;
   draftSet(key, t.value);
+});
+// 표 빈칸 키보드 이동 (한글 조합 중에는 입력기에 양보한다)
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (!t.classList || !t.classList.contains("ctin")) return;
+  if (e.isComposing || e.keyCode === 229 || e.altKey || e.ctrlKey || e.metaKey) return;
+  let dir = null;
+  if (e.key === "Enter") dir = e.shiftKey ? "up" : "down";
+  else if (e.key === "ArrowDown") dir = "down";
+  else if (e.key === "ArrowUp") dir = "up";
+  else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    // 좌우는 글자 사이를 오가야 하니, 커서가 끝에 닿았을 때만 옆 칸으로 넘긴다
+    const s = t.selectionStart, n = t.selectionEnd;
+    if (s !== n) return;
+    if (e.key === "ArrowRight" && s === t.value.length) dir = "right";
+    else if (e.key === "ArrowLeft" && s === 0) dir = "left";
+  }
+  if (!dir) return;
+  e.preventDefault();
+  ctMove(t, dir);
 });
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
 // 화면을 벗어날 때 밀린 백업을 바로 올린다

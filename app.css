@@ -648,6 +648,8 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 .ctans:empty { display: none; }
 .ct-acts { display: flex; align-items: center; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
 .ct-score { font-size: .8rem; color: var(--sub); font-weight: 600; }
+.ct-tip { font-size: .74rem; color: var(--sub); margin-left: auto; }
+.ct-card.graded .ct-tip { display: none; }
 .ct-card.graded .ct-acts .btn { display: none; }
 @media (max-width: 560px) {
   table.ctt th.ctsub { width: 84px; font-size: .7rem; }
@@ -669,9 +671,6 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 .ck:hover { border-color: var(--sub); }
 .ck[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .ck .n { font-variant-numeric: tabular-nums; opacity: .7; font-weight: 400; }
-.cs-sum { font-size: .76rem; color: var(--ink); margin-top: 10px;
-  padding-top: 9px; border-top: 1px solid var(--line); }
-.cs-sum b { font-variant-numeric: tabular-nums; }
 /* 범위 밖 칸: 문제가 아니라 배경 */
 .ctoff { font-size: .78rem; color: var(--sub); padding: 4px 2px; line-height: 1.5; }
 
