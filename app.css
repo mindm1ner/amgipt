@@ -630,6 +630,8 @@ table.ctt thead th { background: var(--hover); font-size: .74rem; font-weight: 7
 table.ctt th.ctcat { width: 74px; font-size: .72rem; font-weight: 700; text-align: left;
   background: var(--hover); white-space: nowrap; }
 table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-align: left; color: var(--sub); }
+/* 총론·창체는 단서가 문장이라 왼쪽 칸을 넓게 잡는다 (내체표는 하위 범주라 짧다) */
+table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-height: 1.45; }
 .ctb { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
 .ctb:last-child { margin-bottom: 0; }
 .ctin { flex: 1; min-width: 90px; font: inherit; font-size: .8rem; color: var(--ink);
@@ -667,6 +669,9 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 }
 .ct-diag .cd-sum { color: var(--ink); display: flex; gap: 6px; align-items: baseline; }
 .ct-diag .cd-sum svg { flex: none; }
+/* 칸마다의 진단은 그 칸 밑에 붙는다. 아래 상자에는 총평만 남는다 */
+.cd-hint { margin-top: 8px; font-size: .74rem; color: var(--sub); }
+.ctwhere { display: block; font-size: .7rem; color: var(--faint); margin-top: 2px; }
 .cd-list { list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
 .cd-list li { padding: 6px 0; }
 .cd-where { font-size: .74rem; color: var(--sub); }
@@ -674,6 +679,7 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 .ct-card.graded .ct-acts .btn { display: none; }
 @media (max-width: 560px) {
   table.ctt th.ctsub { width: 84px; font-size: .7rem; }
+  table.ctt-cue th.ctsub { width: 42%; font-size: .74rem; }
   .ctin { font-size: .76rem; min-width: 70px; }
 }
 
@@ -702,3 +708,59 @@ table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-ali
 /* 지문에 실린 그림 자료 (악보·정간보·시각 자료). 기출 페이지에서 잘라 온 것 */
 .q-body img { max-width: 100%; height: auto; display: block;
   margin: 12px auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+
+
+/* ---------- 원문 모드 ---------- */
+.wonbar .cs-row { gap: 8px; }
+.ck.danger { color: var(--bad, #b4453c); }
+.won-body { font-size: .92rem; line-height: 2.15; color: var(--ink); }
+.won-body .wl { margin: 0 0 6px; }
+.won-body .wl:last-child { margin-bottom: 0; }
+.won-card .won-body { user-select: text; }
+.wb { background: #ffe9a8; color: var(--ink); border-radius: 4px; padding: 1px 3px;
+  cursor: pointer; box-shadow: inset 0 -1px 0 #e0bf5e; }
+.wb:hover { background: #ffd76a; }
+.wskip { color: var(--sub); }
+.ctb.wib { display: inline-flex; vertical-align: baseline; margin: 0 2px; gap: 3px; }
+.ctb.wib .ctin { padding: 2px 6px; font-size: .86rem; }
+.ctb.wib .ctans { flex-basis: auto; margin-left: 4px; }
+.ctb.wib .ctnote { flex-basis: 100%; }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+  background: var(--ink); color: var(--bg); font-size: .82rem; padding: 9px 15px;
+  border-radius: 999px; opacity: 0; pointer-events: none; transition: .18s;
+  z-index: 60; max-width: 82vw; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+
+/* ---------- 기록: 하루치 상세 ---------- */
+.btn.sm { font-size: .76rem; padding: 4px 10px; margin-bottom: 8px; }
+.dgrp { margin-bottom: 16px; }
+.dgrp-h { display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .78rem; font-weight: 700; color: var(--sub); padding: 0 2px 6px;
+  border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.dgrp-h span { font-weight: 400; }
+.drow { padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
+  margin-bottom: 7px; background: var(--card); }
+.drow.bad { border-color: #e6c9c4; }
+.drow-h { display: flex; gap: 7px; align-items: baseline; font-size: .86rem; line-height: 1.5; }
+.dv { flex: none; width: 18px; height: 18px; border-radius: 5px; font-size: .7rem;
+  font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.dv-o { background: #dff0e4; color: #2f7a45; }
+.dv-t { background: #fdf0d5; color: #96702a; }
+.dv-x { background: #f7dedb; color: #b4453c; }
+.dcue { font-size: .74rem; color: var(--faint); margin: 3px 0 0 25px; }
+.dmine, .dmiss, .dnote2 { font-size: .78rem; margin: 5px 0 0 25px; line-height: 1.5; }
+.dmine span, .dmiss span { display: inline-block; font-size: .68rem; font-weight: 700;
+  color: var(--sub); background: var(--hover); border-radius: 4px;
+  padding: 1px 5px; margin-right: 5px; }
+.dmiss { color: var(--sub); }
+
+
+/* 기록 상세: 맞힌 것은 접어 둔다 */
+.dok { margin-top: 2px; }
+.dok > summary { cursor: pointer; list-style: none; font-size: .76rem; color: var(--sub);
+  padding: 6px 2px; border-radius: 8px; }
+.dok > summary::-webkit-details-marker { display: none; }
+.dok > summary::before { content: "▸ "; color: var(--faint); }
+.dok[open] > summary::before { content: "▾ "; }
+.dok > summary:hover { color: var(--ink); background: var(--hover); }
