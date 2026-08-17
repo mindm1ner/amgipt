@@ -622,6 +622,23 @@ function norm(s) {
   return (s || "").toLowerCase()
     .replace(/[\s·⋅ㆍ‧.,()\[\]{}<>『』「」“”‘’"'\-–—_\/\\?!:;~`^*|]/g, "");
 }
+/* 두 글자열이 얼마나 겹치나 (2-그램 다이스, 0~1). 한 묶음에 못 채운 요소가 여럿일 때
+   쓴 것과 가장 닮은 요소를 짝지어, "무엇을 못 썼는지"가 어긋나지 않게 하려고 쓴다 */
+function sim2(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const gram = (s) => {
+    const m = new Map();
+    for (let i = 0; i < s.length - 1; i++) { const k = s.slice(i, i + 2); m.set(k, (m.get(k) || 0) + 1); }
+    return m;
+  };
+  const A = gram(a), B = gram(b);
+  let hit = 0;
+  for (const [k, n] of A) if (B.has(k)) hit += Math.min(n, B.get(k));
+  const tot = (a.length - 1) + (b.length - 1);
+  return tot > 0 ? (2 * hit) / tot : 0;
+}
+
 function judgeTerm(inputs, parts) {
   return parts.map((p, i) => p.accept.some(a => norm(a) === norm(inputs[i]) && norm(inputs[i]) !== ""));
 }
@@ -1476,7 +1493,9 @@ async function ctDiagnose(card) {
     const sibs = gk
       ? new Set(q.subs.filter(x => ctGroupKey(ctx, x.no) === gk).map(x => x.no))
       : null;
-    wrong.push({ b, no, sub, val, mis: ctMisplaced(q, sub, val, sibs) });
+    /* 채점이 묶음 안에서 정답 자리를 다시 나눈 결과. 이 칸이 실제로 책임질 정답이다 */
+    const eff = b.dataset.eff || sub.answer;
+    wrong.push({ b, no, sub, val, eff, mis: ctMisplaced(q, sub, val, sibs) });
   });
   if (!wrong.length) return;
 
@@ -1494,12 +1513,20 @@ async function ctDiagnose(card) {
   if (!asked.length) { box.remove(); return; }
   if (!aiOn()) { box.innerHTML = `<div class="cd-sum">AI 진단이 꺼져 있어요. 자리를 바꿔 쓴 것만 표시했어요</div>`; return; }
 
-  /* 2) 나머지 해석은 AI. 표 전체를 같이 보내야 "어느 칸의 내용인지"를 짚을 수 있다 */
+  /* 2) 나머지 해석은 AI. 표 전체를 같이 보내야 "어느 칸의 내용인지"를 짚을 수 있다.
+     ⚠️ 정답은 채점이 묶음 안에서 다시 나눈 것(eff)으로 보낸다. 원래 자리 그대로 보내면
+     이미 옆 칸에서 맞힌 요소를 "이게 정답이에요"라고 말한다. 묶음 안 자리바꿈이라
+     라벨은 그대로여서 다른 칸을 짚는 판정(grade·area)에는 영향이 없다 */
+  const effByNo = new Map();
+  card.querySelectorAll(".ctb").forEach(x => {
+    if (x.dataset.eff) effByNo.set(String(x.dataset.sid).split("|").pop(), x.dataset.eff);
+  });
   box.innerHTML = `<div class="cd-sum">${ico("spark")} 오답을 보는 중</div>`;
   try {
     const data = await aiJudgeTable(
       `${quiz.range} · ${q.title}`,
-      q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr, ans: s.answer })),
+      q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr,
+                        ans: effByNo.get(s.no) || s.answer })),
       asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" })),
       quiz.subject === "내체표" ? "표" : "조항",
       quiz.subject === "내체표"   // 같은 칸 안에서는 순서 무관 (표 빈칸형만)
@@ -1535,7 +1562,7 @@ async function ctDiagnose(card) {
 
 /* 오답 유형을 기록에 남긴다. 이 기록이 오답 노트이자, 나중에 "자주 틀리는 칸만 빈칸" 의 재료다 */
 function ctSaveErr(w, err, r) {
-  record(w.b.dataset.sid, r || "X", null, r === "O" ? null : [w.sub.answer], "", err, w.val);
+  record(w.b.dataset.sid, r || "X", null, r === "O" ? null : [w.eff || w.sub.answer], "", err, w.val);
 }
 
 /* ---------- 맥락형 오답 유형 진단 ----------
@@ -2515,30 +2542,50 @@ function onAppClick(e) {
        것끼리 묶음 안에서 짝을 짓는다 (정답 하나는 한 번만 쓰인다. 같은 걸 두 번
        쓰면 하나만 인정). 묶음 열쇠가 없는 것(원문 모드)은 혼자 두어 자기 답만 본다 */
     const hitSet = new Set();
-    const gctx = ctCardCtx(card);
-    const groups = new Map();
-    card.querySelectorAll(".ctb").forEach(b => {
-      const key = ctGroupKey(gctx, String(b.dataset.sid).split("|").pop()) || b;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(b);
-    });
-    for (const list of groups.values()) {
-      const left = [];          // 자기 답과 안 맞은 빈칸
-      const pool = new Map();   // 아직 안 쓰인 정답 (norm → 남은 개수)
-      for (const b of list) {
-        const v = norm(b.querySelector(".ctin").value);
-        const a = norm(b.dataset.ans);
-        if (v && v === a) { hitSet.add(b); continue; }
-        left.push({ b, v });
-        pool.set(a, (pool.get(a) || 0) + 1);
-      }
-      for (const { b, v } of left) {
-        if (v && pool.get(v)) { pool.set(v, pool.get(v) - 1); hitSet.add(b); }
+    const eff = new Map();      // 빈칸 → 이 칸이 실제로 책임질 정답
+    if (!reveal) {
+      const gctx = ctCardCtx(card);
+      const groups = new Map();
+      card.querySelectorAll(".ctb").forEach(b => {
+        const key = ctGroupKey(gctx, String(b.dataset.sid).split("|").pop()) || b;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(b);
+      });
+      for (const list of groups.values()) {
+        const left = [];   // 아직 못 맞춘 빈칸
+        const pool = [];   // 아직 아무도 안 쓴 정답 (원문 그대로)
+        for (const b of list) {
+          const v = norm(b.querySelector(".ctin").value);
+          const a = b.dataset.ans;
+          if (v && v === norm(a)) { hitSet.add(b); eff.set(b, a); continue; }
+          left.push({ b, v });
+          pool.push(a);
+        }
+        // 순서만 바뀐 것: 남은 정답 중 글자가 같은 것이 있으면 그 자리로 인정
+        for (let i = left.length - 1; i >= 0; i--) {
+          const it = left[i];
+          const k = it.v ? pool.findIndex(a => norm(a) === it.v) : -1;
+          if (k < 0) continue;
+          hitSet.add(it.b); eff.set(it.b, pool[k]);
+          pool.splice(k, 1); left.splice(i, 1);
+        }
+        /* 남은 빈칸에는 **아직 안 나온 요소**를 붙인다. 자기 칸의 원래 정답을 그대로
+           두면, 이미 옆 칸에서 맞힌 것을 "이게 정답이에요"라고 말하게 된다.
+           여럿 남았으면 쓴 것과 가장 닮은 요소부터 짝지어 진단이 어긋나지 않게 */
+        for (const it of left) {
+          if (!pool.length) continue;
+          let k = 0, best = -1;
+          pool.forEach((a, i) => { const s = sim2(norm(a), it.v); if (s > best) { best = s; k = i; } });
+          eff.set(it.b, pool[k]);
+          pool.splice(k, 1);
+        }
       }
     }
     card.querySelectorAll(".ctb").forEach(b => {
       const inp = b.querySelector(".ctin");
-      const ans = b.dataset.ans;
+      /* 이 칸이 책임질 정답. 묶음 안에서 자리를 다시 나눈 결과다 (없으면 원래 정답) */
+      const ans = eff.get(b) || b.dataset.ans;
+      b.dataset.eff = ans;
       const hit = hitSet.has(b);
       all++;
       if (hit) ok++;
@@ -2572,8 +2619,9 @@ function onAppClick(e) {
     btn.textContent = next;
     b.classList.toggle("hit", next === "O");
     b.classList.toggle("miss", next !== "O");
-    if (next !== "O") b.querySelector(".ctans").textContent = b.dataset.ans;
-    record(b.dataset.sid, next === "△" ? "T" : next, null, next === "O" ? null : [b.dataset.ans], "",
+    const ans = b.dataset.eff || b.dataset.ans;   // 묶음 안에서 다시 나눈 정답
+    if (next !== "O") b.querySelector(".ctans").textContent = ans;
+    record(b.dataset.sid, next === "△" ? "T" : next, null, next === "O" ? null : [ans], "",
       null, (b.querySelector(".ctin") || {}).value);
     persist(); schedulePush();
     const card = b.closest(".ct-card");
