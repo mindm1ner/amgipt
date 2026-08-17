@@ -617,6 +617,20 @@ function bumpGoal() {
 }
 function goalToday() { return (S.goal && S.goal.d === todayStr()) ? S.goal.n : 0; }
 
+/* 지금 돌고 있는 빌드. 배포 스크립트가 index.html 의 ?v=dev 를 타임스탬프로 바꾼다.
+   화면에 찍어 두지 않으면 "고쳤는데 그대로다"가 옛 파일 탓인지 코드 탓인지 가릴 수가 없다.
+   실제로 그 때문에 두 번 헛돌았다 (2026-08-17) */
+function buildStamp() {
+  const src = (document.currentScript && document.currentScript.src) ||
+    [...document.scripts].map(s => s.src).find(s => /app\.js/.test(s)) || "";
+  const m = src.match(/[?&]v=([^&]+)/);
+  const v = m ? decodeURIComponent(m[1]) : "";
+  if (!v || v === "dev") return "개발본";
+  return v.length >= 12
+    ? `${v.slice(4, 6)}/${v.slice(6, 8)} ${v.slice(8, 10)}:${v.slice(10, 12)} 판`
+    : v;
+}
+
 /* ---------- 판정(고정 코드) ---------- */
 function norm(s) {
   return (s || "").toLowerCase()
@@ -794,7 +808,7 @@ function homeMenuHtml() {
   const due = qc.relearn + qc.review;
   const subj = subjectGroups();
   return `
-    <div class="sbrand"><h1>암기PT</h1><p>임용 암기 트레이너</p></div>
+    <div class="sbrand"><h1>암기PT</h1><p>임용 암기 트레이너 · ${esc(buildStamp())}</p></div>
     <div class="sgroup"><div class="slabel">상태</div>
       ${menuItem("st:today", "due", "오늘의 복습", due, true)}
       ${menuItem("st:weak", "cross", "틀린 것", qc.weak)}
@@ -1413,7 +1427,10 @@ function ctCardCtx(card) {
    (음악 연주의 지식⋅이해는 행 라벨 없이 3행). 그래서 라벨로 묶는다.
    원문 모드(조항)는 낱말 자리가 곧 문장이라 묶지 않는다 */
 function ctGroupKey(ctx, no) {
-  if (!ctx || ctx.quiz.kind !== "ct") return null;
+  /* 내체표만 묶는다. 총론·창체도 kind가 "ct"지만 범주·영역·학년군 자리에 조항 이름이나
+     교과명이 들어가 세 값이 같아져 버린다. 시수표는 3~4학년과 5~6학년이 둘 다 408처럼
+     같은 값을 갖는 칸이 있어서, 묶으면 한 번 써도 다른 칸이 오답이 된다 */
+  if (!ctx || ctx.quiz.kind !== "ct" || ctx.quiz.subject !== "내체표") return null;
   const s = (ctx.q.subs || []).find(x => x.no === no);
   if (!s || !s.ct) return null;
   return `${s.ct.cat}|${ctx.area.get(no) || ""}|${s.ct.gr}`;
@@ -2543,8 +2560,8 @@ function onAppClick(e) {
        쓰면 하나만 인정). 묶음 열쇠가 없는 것(원문 모드)은 혼자 두어 자기 답만 본다 */
     const hitSet = new Set();
     const eff = new Map();      // 빈칸 → 이 칸이 실제로 책임질 정답
+    const gctx = ctCardCtx(card);
     if (!reveal) {
-      const gctx = ctCardCtx(card);
       const groups = new Map();
       card.querySelectorAll(".ctb").forEach(b => {
         const key = ctGroupKey(gctx, String(b.dataset.sid).split("|").pop()) || b;
@@ -2601,6 +2618,31 @@ function onAppClick(e) {
         bumpGoal();   // 빈칸 하나가 카드 하나이므로 칸마다 센다
       }
     });
+    /* 같은 표 안에 이 요소를 요구하는 칸이 또 있으면 말해 준다. 학년군이나 범주가 달라
+       정말로 두 칸의 답인데(음악 '노래 부르거나 악기 연주하기'는 두 학년군에 있다),
+       말해 주지 않으면 "아까 썼는데 또 정답이라 한다"로 보인다 */
+    if (!reveal && gctx) {
+      const key = (b) => norm(eff.get(b) || b.dataset.ans);
+      const byAns = new Map();
+      card.querySelectorAll(".ctb").forEach(b => {
+        const k = key(b);
+        if (!byAns.has(k)) byAns.set(k, []);
+        byAns.get(k).push(b);
+      });
+      card.querySelectorAll(".ctb.miss").forEach(b => {
+        const mates = (byAns.get(key(b)) || []).filter(x => x !== b);
+        if (!mates.length) return;
+        const where = mates.map(x => {
+          const no = String(x.dataset.sid).split("|").pop();
+          const s = (gctx.q.subs || []).find(y => y.no === no);
+          return s && s.ct ? ctWhere(s, gctx.area) : "";
+        }).filter(Boolean);
+        if (!where.length) return;
+        let el = b.querySelector(".ctdup");
+        if (!el) { el = document.createElement("div"); el.className = "ctdup"; b.appendChild(el); }
+        el.textContent = `이 요소는 ${where.join(" / ")} 칸에도 들어가요`;
+      });
+    }
     card.classList.add("graded");
     card.querySelector(".ct-score").textContent =
       reveal ? `빈칸 ${all}개` : `${all}칸 중 ${ok}칸${ok === all ? " · 다 맞혔어요" : ""}`;

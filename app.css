@@ -672,6 +672,8 @@ table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-
 /* 칸마다의 진단은 그 칸 밑에 붙는다. 아래 상자에는 총평만 남는다 */
 .cd-hint { margin-top: 8px; font-size: .74rem; color: var(--sub); }
 .ctwhere { display: block; font-size: .7rem; color: var(--faint); margin-top: 2px; }
+/* 같은 표의 다른 칸도 이 요소를 요구할 때. 이미 쓴 답이 또 나온 것처럼 보이지 않게 */
+.ctdup { display: block; font-size: .7rem; color: var(--faint); margin-top: 2px; }
 .cd-list { list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); }
 .cd-list li { padding: 6px 0; }
 .cd-where { font-size: .74rem; color: var(--sub); }
