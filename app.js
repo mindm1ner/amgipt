@@ -1308,6 +1308,13 @@ function ctNext(from, dir) {
   if (!card) return null;
   const all = [...card.querySelectorAll("input.ctin")];
   if (all.length < 2) return null;
+  /* ⚠️ 원문 모드는 표가 아니라 흐르는 글이다. 빈칸이 문장 안에 박혀 있어서 줄바꿈 위치가
+     화면 너비와 글자 수에 따라 달라진다. 좌표로 "위/아래 칸"을 재면 같은 열이라는 것이
+     없으므로 누를 때마다 엉뚱한 데로 튄다. 글에서는 읽는 순서가 곧 칸 순서다 */
+  if (card.classList.contains("won-card")) {
+    const i = all.indexOf(from);
+    return all[i + ((dir === "down" || dir === "right") ? 1 : -1)] || null;
+  }
   const r0 = from.getBoundingClientRect();
   const vert = dir === "up" || dir === "down";
   const cands = [];
@@ -1553,12 +1560,22 @@ function wonHtml(quiz, weakOnly, pred) {
    자리 바꿈은 글자가 똑같으므로 고정 코드가 먼저 확실히 잡고, 해석만 AI에 맡긴다. */
 const CT_ERR_KO = {
   ok_form: "표기 차이", partial: "일부만", grade: "학년군 바뀜", area: "영역 바뀜",
-  mix: "두 칸 섞임", confuse: "다른 개념", other: "다른 내용", blank: "안 씀"
+  mix: "두 칸 섞임", confuse: "다른 개념", other: "다른 내용", blank: "안 씀",
+  /* 원문 모드 전용. 조항 글에는 범주·학년군이 없어 "영역 바뀜"이라 부를 수 없다 */
+  spot: "다른 자리"
 };
 /* AI가 칸 번호를 "1"로도 "1번"으로도 "1,4"로도 돌려준다. 맨 앞 숫자만 뽑아서 맞춘다 —
    글자 그대로 대조하면 그 칸의 진단이 조용히 사라지고,
    숫자를 전부 이으면 "1,4"가 14번 칸이 되어 엉뚱한 칸을 가리킨다 */
-function ctNo(x) { const m = String(x == null ? "" : x).match(/\d+/); return m ? m[0] : ""; }
+/* ⚠️ 원문 빈칸의 번호는 숫자 하나가 아니라 "줄_글자"(3_23)다. 여기서 숫자만 뽑으면
+   같은 줄의 빈칸이 전부 "3" 한 번호로 뭉쳐서, 진단이 조용히 엉뚱한 칸에 붙는다 */
+function ctNo(x) {
+  const s = String(x == null ? "" : x);
+  const w = s.match(/\d+_\d+/);
+  if (w) return w[0];
+  const m = s.match(/\d+/);
+  return m ? m[0] : "";
+}
 
 function ctCardCtx(card) {
   const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
@@ -1594,6 +1611,9 @@ function ctGroupKey(ctx, no) {
 
 function ctWhere(s, area) {
   const a = area && area.get(s.no);
+  /* 원문 모드 빈칸에는 범주·학년군이 없다(조항 글에서 드래그한 자리라서).
+     그 자리를 가리키는 단서는 빈칸이 놓인 글줄뿐이다 */
+  if (!s.ct) return a || "원문";
   return `${(s.ct.cat || "").replace("⋅", "·")} · ${a ? a + " · " : ""}${s.ct.gr}`;
 }
 
@@ -1606,6 +1626,9 @@ function ctMisplaced(q, sub, val, skip) {
   const other = q.subs.find(s =>
     s.no !== sub.no && !(skip && skip.has(s.no)) && norm(s.answer) === n);
   if (!other) return null;
+  /* 원문 모드는 범주·학년군이 없어 자리 종류를 가를 수 없다. 같은 낱말을 다른 자리에
+     썼다는 것까지만 말한다 (같은 조항에서 같은 낱말을 여러 곳에 뚫는 일이 흔하다) */
+  if (!other.ct || !sub.ct) return { t: "spot", ref: other.no, other };
   return { t: (other.ct.cat === sub.ct.cat && other.ct.gr !== sub.ct.gr) ? "grade" : "area", ref: other.no, other };
 }
 
@@ -1676,7 +1699,10 @@ async function ctDiagnose(card) {
   for (const w of wrong) {
     if (!w.val) { ctSaveErr(w, { t: "blank", w: "", n: "" }); continue; }
     if (!w.mis) continue;
-    const note = `${ctWhere(w.mis.other, area)} 칸의 내용이에요`;
+    /* 원문은 자리 이름이 없고 area 가 글줄 토막이라, 그걸 넣으면 문장이 중간에 잘린 채 붙는다 */
+    const note = w.sub.ct
+      ? `${ctWhere(w.mis.other, area)} 칸의 내용이에요`
+      : `이 원문 다른 자리에 들어갈 말이에요`;
     ctNoteEl(w.b, w.mis.t, note);
     ctSaveErr(w, { t: w.mis.t, r: w.mis.ref, w: w.val, n: note });
   }
@@ -1698,7 +1724,10 @@ async function ctDiagnose(card) {
   try {
     const data = await aiJudgeTable(
       `${quiz.range} · ${q.title}`,
-      q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr,
+      /* 원문 모드 빈칸에는 ct(범주·학년군)가 없다. 없는 채로 보낸다 —
+         여기서 s.ct 를 그냥 읽으면 진단이 통째로 실패한다 */
+      q.subs.map(s => ({ no: s.no, cat: ((s.ct && s.ct.cat) || "").replace("⋅", "·"),
+                        area: area.get(s.no) || "", gr: (s.ct && s.ct.gr) || "",
                         ans: effByNo.get(s.no) || s.answer })),
       asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" })),
       quiz.subject === "내체표" ? "표" : "조항",
@@ -1709,11 +1738,18 @@ async function ctDiagnose(card) {
     for (const it of (data.items || [])) {
       const w = byId.get(ctNo(it.no));
       if (!w) continue;
-      const type = CT_ERR_KO[it.type] ? it.type : "other";
-      const note = (it.note || "").trim();
+      let type = CT_ERR_KO[it.type] ? it.type : "other";
+      /* 원문에는 영역·학년군이 없다. AI가 그 이름으로 불러도 "다른 자리"로 바꿔 적는다 */
+      if (!w.sub.ct && (type === "area" || type === "grade")) type = "spot";
+      let note = (it.note || "").trim();
+      /* 원문에서는 AI가 칸을 "2_70번 칸"처럼 내부 좌표로 부른다(줄_글자).
+         읽는 사람에게는 뜻이 없는 숫자라 그 자리의 원문 낱말로 바꿔 적는다 */
+      if (!w.sub.ct) note = note.replace(/(\d+_\d+)\s*번?\s*칸/g,
+        (m, id) => { const s = byNo.get(id); return s ? `‘${s.answer}’ 자리` : "다른 자리"; });
       /* 진단은 그 칸 밑에 붙인다. 카드 아래 목록으로 몰아 두면 어느 칸 얘기인지
          눈으로 되짚어야 하고, 표가 길면 아예 화면 밖으로 나간다 */
-      ctNoteEl(w.b, type, note, ctWhere(w.sub, area));
+      /* 원문은 빈칸이 글 안에 박혀 있어 자리 표시가 필요 없다 (오히려 글줄이 두 번 찍힌다) */
+      ctNoteEl(w.b, type, note, w.sub.ct ? ctWhere(w.sub, area) : "");
       /* 판정 제안은 AI, 합산·저장은 고정 코드 (칸을 눌러 언제든 바꿀 수 있다) */
       const r = it.verdict === "good" ? "O" : it.verdict === "partial" ? "T" : "X";
       const mark = r === "O" ? "O" : r === "T" ? "△" : "X";
