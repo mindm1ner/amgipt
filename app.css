@@ -19,6 +19,8 @@
   --no: #a26056; --no-bg: #f1e9e7; --nob: #ddccc8;
   --warn: #97804f; --warn-bg: #f1ede2; --warnb: #ddd4bd;
   --hl: #EDE8DF;
+  /* 형광펜 원색. 알파만 올려 3단계로 쓴다 (--no 와 같은 벽돌색, 순빨강을 들이면 종이·잉크 톤이 깨진다) */
+  --heat: 162, 96, 86;
   --bar-bg: rgba(246, 245, 241, .96);
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.05);
   font-size: 16px;
@@ -32,6 +34,7 @@
     --no: #c29188; --no-bg: #322724; --nob: #45332f;
     --warn: #b3a077; --warn-bg: #302c22; --warnb: #453e2d;
     --hl: #57534A;
+    --heat: 194, 145, 136;
     --bar-bg: rgba(28, 27, 24, .96);
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35);
   }
@@ -766,3 +769,73 @@ table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-
 .dok > summary::before { content: "▸ "; color: var(--faint); }
 .dok[open] > summary::before { content: "▾ "; }
 .dok > summary:hover { color: var(--ink); background: var(--hover); }
+
+/* ---------- 내체표 표로 보기 (누적 약점) ----------
+   형광펜은 연속 그라데이션이 아니라 3단계로 못 박는다. 농도가 이어지면 두 칸을 나란히 놓고
+   어느 쪽이 더 약한지 비교가 안 된다.
+   색은 시스템의 벽돌색(--heat) 알파만 올린 것. 가장 진한 3단계에서도 본문 글자 대비
+   8.3:1(다크 6.7:1)이라 AAA를 지킨다. 색만으로 갈리지 않게 3단계에는 밑줄을 겹친다. */
+.ct-modes { display: flex; gap: 6px; margin-bottom: 14px; }
+.ctmode { font-size: .8rem; font-weight: 600; padding: 6px 15px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card); color: var(--sub);
+  text-decoration: none; transition: border-color .13s, color .13s; }
+.ctmode:hover { border-color: var(--sub); color: var(--ink); }
+.ctmode.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+.heat-lgd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: .74rem; color: var(--sub); margin-bottom: 14px; padding: 0 2px; }
+.heat-lgd i { display: inline-block; width: 18px; height: 12px; border-radius: 3px;
+  vertical-align: -1px; margin-right: 5px; border: 1px solid var(--line); }
+.heat-lgd i.h1 { background: rgba(var(--heat), .10); }
+.heat-lgd i.h2 { background: rgba(var(--heat), .22); }
+.heat-lgd i.h3 { background: rgba(var(--heat), .36); border-bottom: 2px solid var(--no); }
+.heat-lgd .hl-note { color: var(--faint); }
+
+.hcell { display: block; width: 100%; text-align: left; font: inherit; font-size: .8rem;
+  line-height: 1.45; color: var(--ink); background: transparent; border: 0;
+  border-bottom: 2px solid transparent; border-radius: 6px; padding: 4px 6px;
+  margin-bottom: 3px; cursor: pointer; }
+.hcell:last-child { margin-bottom: 0; }
+.hcell:hover { background: var(--hover); }
+.hcell.h1 { background: rgba(var(--heat), .10); }
+.hcell.h2 { background: rgba(var(--heat), .22); }
+.hcell.h3 { background: rgba(var(--heat), .36); border-bottom-color: var(--no); }
+.hcell.h1:hover, .hcell.h2:hover, .hcell.h3:hover { filter: brightness(.97); }
+/* 틀린 적은 있으나 지금은 맞히는 칸: 색을 빼고 왼쪽에 자국만 남긴다 */
+.hcell.healed { color: var(--sub); box-shadow: inset 2px 0 0 var(--nob); }
+.hcell.fresh { color: var(--faint); }
+.hcell .hn { font-size: .66rem; font-weight: 700; color: var(--no); margin-left: 5px;
+  background: var(--card); border-radius: 999px; padding: 0 5px; vertical-align: 1px; }
+.hcell.sel { outline: 2px solid var(--ink); outline-offset: -1px; }
+.hcell.hlink { outline: 2px dashed var(--warn); outline-offset: -1px; }
+
+.hclean > summary { cursor: pointer; list-style: none; font-size: .78rem; color: var(--sub);
+  padding: 4px 2px; }
+.hclean > summary::-webkit-details-marker { display: none; }
+.hclean > summary::before { content: "▸ "; color: var(--faint); }
+.hclean[open] > summary::before { content: "▾ "; }
+
+.heat-detail { margin-top: 12px; padding: 13px 15px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--hover); }
+.heat-detail:empty { display: none; padding: 0; border: 0; margin: 0; }
+.hd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.hd-ans { font-size: .92rem; }
+.hd-where { font-size: .72rem; color: var(--sub); margin-left: 7px; }
+.hd-close { font: inherit; font-size: .8rem; line-height: 1; border: 0; background: transparent;
+  color: var(--faint); cursor: pointer; padding: 2px 4px; }
+.hd-close:hover { color: var(--ink); }
+.hd-sum { font-size: .74rem; color: var(--sub); margin-top: 5px; }
+.hd-none { font-size: .8rem; color: var(--sub); margin-top: 8px; }
+.hd-tl { list-style: none; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 11px; }
+.hd-tl li { display: grid; grid-template-columns: 44px 1fr; gap: 9px; }
+.hd-d { font-size: .74rem; font-weight: 700; color: var(--faint); padding-top: 2px; }
+.hd-r { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.hd-mine { font-size: .82rem; color: var(--ink); }
+.hd-mine.none { color: var(--faint); }
+.hd-x { font-size: .76rem; color: var(--sub); line-height: 1.55; margin-top: 4px; }
+.hd-link { font-size: .74rem; color: var(--warn); line-height: 1.5; margin-top: 4px; }
+@media (max-width: 520px) {
+  .hcell { font-size: .76rem; }
+  .heat-lgd .hl-note { flex-basis: 100%; }
+}

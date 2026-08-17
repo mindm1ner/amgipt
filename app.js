@@ -1144,6 +1144,117 @@ function ctTableHtml(quiz, q, qi) {
     </section>`;
 }
 
+/* ---------- 표로 보기 (누적 약점) ----------
+   기록을 세로 목록으로만 보면 내체표 오답의 절반이 안 보인다. 대표 실점이 학년군 바뀜·영역
+   바뀜, 곧 **자리**를 틀린 것인데 목록에는 자리가 없어서다. 그래서 원래 표에 오답을 도로 얹는다.
+
+   새 데이터는 없다. 틀린 횟수는 기록을 세면 나오고, 그때 쓴 답(v)과 오답 유형·혼동한 칸(x)은
+   이미 줄마다 붙어 있다.
+   ⚠️ 여기서 AI를 다시 부르지 않는다. 볼 때마다 진단이 달라지면 "같은 답이면 언제나 같은 판정"이
+   깨진다. 저장된 진단을 꺼내 보여주기만 한다 (그래서 비용 0, 오프라인에서도 열린다). */
+
+/* 칠할지 말지 = 지금도 약점인가, 얼마나 진할지 = 누적 오답 수.
+   누적 하나로만 칠하면 오래 푼 칸이 무조건 진해져서 "많이 푼 표"가 "약한 표"로 읽힌다.
+   이미 맞히고 있는 칸은 색을 빼고 자국만 남긴다 */
+function ctHeat(id) {
+  const h = history(id);
+  const w = h.filter(r => r.r !== "O").length;
+  return { w, tried: h.length > 0, lv: (w && isWeak(id)) ? Math.min(w, 3) : 0 };
+}
+/* 칸 번호 -> 영역. ctCardCtx 와 같은 표지만 저쪽은 주소창을 읽어서 쓸 수 없다 */
+function ctAreaMap(q) {
+  const a = new Map();
+  if (q.ct) q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => a.set(id, r.sub || q.title || ""))));
+  return a;
+}
+/* 받침 있으면 "과", 없으면 "와" */
+function gwa(s) {
+  const t = String(s || "").trim();
+  if (!t) return "와";
+  const c = t.charCodeAt(t.length - 1);
+  return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 > 0) ? "과" : "와";
+}
+
+function ctHeatTableHtml(quiz, q, qi) {
+  const byNo = new Map(q.subs.map(s => [s.no, s]));
+  const cats = ctCats(quiz);
+  let wrongN = 0, hotN = 0;
+  const cell = (no) => {
+    const s = byNo.get(no);
+    if (!s) return "";
+    if (!cats.has(s.ct.cat)) return `<div class="ctoff">${esc(s.answer)}</div>`;
+    const id = subId(quiz, q, s);
+    const { w, tried, lv } = ctHeat(id);
+    if (lv) hotN++;
+    if (w) wrongN++;
+    const cls = lv ? " h" + lv : w ? " healed" : tried ? "" : " fresh";
+    /* 횟수는 상시 표시. hover 툴팁은 폰에 없어서 그것만 믿으면 모바일에서 안 보인다 */
+    const tip = !tried ? "아직 안 푼 칸" : !w ? "틀린 적 없어요"
+      : `${w}번 틀렸어요${lv ? "" : " (지금은 맞히는 중)"}`;
+    return `<button type="button" class="hcell${cls}" data-act="heat-cell"
+      data-sid="${esc(id)}" data-no="${esc(no)}" title="${esc(tip)}">${esc(s.answer)}${
+      w ? `<span class="hn">${w}</span>` : ""}</button>`;
+  };
+  const hasSub = q.ct.rows.some(r => r.sub);
+  const rows = q.ct.rows.map(r => {
+    const cells = r.cells.map(c => `<td colspan="${c.span}">${c.ids.map(cell).join("")}</td>`).join("");
+    return `<tr><th class="ctcat">${esc(CT_CAT_KO[r.cat] || r.cat)}</th>
+      ${hasSub ? `<th class="ctsub">${esc(r.sub || "")}</th>` : ""}${cells}</tr>`;
+  }).join("");
+  const table = `<div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}">
+      <thead><tr><th></th>${hasSub ? "<th></th>" : ""}
+        ${q.ct.cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  /* 깨끗한 표까지 다 펴 두면 정작 볼 표를 찾느라 스크롤을 한참 내린다. 접어 둔다 */
+  const body = wrongN
+    ? table + `<div class="heat-detail"></div>`
+    : `<details class="hclean"><summary>틀린 칸이 없어요 · 표 펼치기</summary>
+        ${table}<div class="heat-detail"></div></details>`;
+  return `<section class="q-card ct-heat" data-qi="${qi}">
+      <div class="q-head"><span class="qno">${esc(q.title)}</span>
+        <span class="qpts">${hotN ? `붉은 칸 ${hotN}` : wrongN ? `자국 ${wrongN}` : "깨끗"}</span></div>
+      ${body}</section>`;
+}
+
+function ctHeatHtml(quiz) {
+  return `<div class="heat-lgd">
+      <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>
+      <span><i class="h3"></i>3번 이상 틀린 칸</span>
+      <span class="hl-note">지금 맞히는 칸은 색을 뺐어요. 칸을 누르면 그때 쓴 답이 나와요</span>
+    </div>${quiz.questions.map((q, qi) => ctHeatTableHtml(quiz, q, qi)).join("")}`;
+}
+
+/* 칸 하나의 시도 이력. 오래된 것이 아래로 가게 뒤집는다 (최근이 먼저 읽혀야 한다) */
+function ctHeatDetailHtml(quiz, q, sub, id) {
+  const area = ctAreaMap(q);
+  const byNo = new Map(q.subs.map(s => [s.no, s]));
+  const h = history(id);
+  const head = `<div class="hd-head">
+      <div><b class="hd-ans">${esc(sub.answer)}</b>
+        <span class="hd-where">${esc(ctWhere(sub, area))}</span></div>
+      <button class="hd-close" data-act="heat-close" aria-label="닫기">✕</button></div>`;
+  if (!h.length) return head + `<p class="hd-none">아직 안 푼 칸이에요.</p>`;
+  const rows = h.slice().reverse().map(r => {
+    const [, mo, dy] = String(r.d || "").split("-");
+    const mine = r.v || (r.x && r.x.w) || "";
+    const ref = r.x && r.x.r ? byNo.get(ctNo(r.x.r)) : null;
+    return `<li>
+      <span class="hd-d">${mo ? `${+mo}/${+dy}` : ""}</span>
+      <div>
+        <div class="hd-r">${vTag(r.r)}${mine
+          ? `<span class="hd-mine">${esc(mine)}</span>`
+          : `<span class="hd-mine none">안 씀</span>`}</div>
+        ${r.x && r.x.t ? `<div class="hd-x"><span class="cttag t-${esc(r.x.t)}"
+          >${esc(CT_ERR_KO[r.x.t] || r.x.t)}</span>${esc(r.x.n || "")}</div>` : ""}
+        ${ref && ref.no !== sub.no ? `<div class="hd-link">↖ ${esc(ctWhere(ref, area))} 칸의
+          <b>${esc(ref.answer)}</b>${gwa(ref.answer)} 혼동</div>` : ""}
+      </div></li>`;
+  }).join("");
+  const w = h.filter(r => r.r !== "O").length;
+  return head + `<p class="hd-sum">${h.length}번 풀어서 ${w}번 틀렸어요</p>
+    <ul class="hd-tl">${rows}</ul>`;
+}
+
 /* ---------- 표 빈칸 사이 이동 (엔터 = 아래 칸, 방향키 = 상하좌우) ----------
    colspan·한 칸에 빈칸 여러 개가 섞여 있어 표 모델로는 위치가 안 잡힌다.
    그래서 화면에 그려진 좌표로 "보이는 대로" 옆 칸을 찾는다. */
@@ -1747,11 +1858,13 @@ function quizCardsHtml(quiz, weakOnly, pred) {
   }).join("");
 }
 
-function renderQuiz(quizId, weakOnly) {
+function renderQuiz(quizId, weakOnly, heat) {
   const quiz = DATA.find(z => z.id === quizId);
   if (!quiz) { location.hash = ""; return; }
 
-  const qCards = quizCardsHtml(quiz, weakOnly);
+  /* 표로 보기: 같은 표를 풀지 않고 누적 약점만 얹어서 본다. 표 있는 묶음에서만 켜진다 */
+  const isHeat = !!heat && quiz.kind === "ct";
+  const qCards = isHeat ? ctHeatHtml(quiz) : quizCardsHtml(quiz, weakOnly);
 
   const totalSubs = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
   const doneSubs = quiz.questions.reduce((a, q) =>
@@ -1763,7 +1876,11 @@ function renderQuiz(quizId, weakOnly) {
       <span class="ttl">${esc(quiz.title)}${weakOnly ? ' <span class="chip">틀린 것만</span>' : ""}</span>
       <span class="prog" id="prog">기록 ${doneSubs}/${totalSubs}</span>
     </div>
-    ${quiz.kind === "ct" ? ctScopeHtml(quiz) : ""}
+    ${quiz.kind === "ct" ? `<div class="ct-modes">
+      <a class="ctmode${isHeat ? "" : " on"}" href="#q/${encodeURIComponent(quiz.id)}">풀기</a>
+      <a class="ctmode${isHeat ? " on" : ""}" href="#q/${encodeURIComponent(quiz.id)}/heat">표로 보기</a>
+    </div>` : ""}
+    ${quiz.kind === "ct" && !isHeat ? ctScopeHtml(quiz) : ""}
     ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
       <ul>${quiz.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </details>` : ""}
@@ -2539,6 +2656,41 @@ function onAppClick(e) {
     renderQuiz(id, false);
     return;
   }
+  /* 표로 보기에서 칸 누르기: 그 칸의 시도 이력을 펴고, 그때 혼동한 칸을 표 위에서 같이 표시한다.
+     "이 칸에 쓸 걸 저 칸에 썼다"의 짝이 기록에 남아 있어서(x.r) 목록으로는 안 보이던
+     맞바꿈 버릇이 표 위에서 보인다 */
+  if (act === "heat-cell") {
+    const sec = btn.closest(".ct-heat");
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!sec || !quiz) return;
+    const q = quiz.questions[+sec.dataset.qi];
+    const no = btn.dataset.no;
+    const sub = q && q.subs.find(s => String(s.no) === String(no));
+    if (!sub) return;
+    const box = sec.querySelector(".heat-detail");
+    const reopen = box && box.dataset.no === String(no);
+    /* 열려 있던 것은 표 전체에서 닫는다. 두 칸이 동시에 선택돼 보이면 연결선이 어느 쪽 것인지 흐려진다 */
+    document.querySelectorAll(".hcell.sel, .hcell.hlink").forEach(x => x.classList.remove("sel", "hlink"));
+    document.querySelectorAll(".heat-detail").forEach(x => { x.innerHTML = ""; x.dataset.no = ""; });
+    if (reopen) return;                       // 같은 칸을 다시 누르면 닫기
+    btn.classList.add("sel");
+    const refs = new Set(history(btn.dataset.sid).filter(r => r.x && r.x.r).map(r => ctNo(r.x.r)));
+    refs.forEach(n => {
+      const el = [...sec.querySelectorAll(".hcell")].find(x => x.dataset.no === n);
+      if (el && el !== btn) el.classList.add("hlink");
+    });
+    if (box) {
+      box.dataset.no = String(no);
+      box.innerHTML = ctHeatDetailHtml(quiz, q, sub, btn.dataset.sid);
+    }
+    return;
+  }
+  if (act === "heat-close") {
+    document.querySelectorAll(".hcell.sel, .hcell.hlink").forEach(x => x.classList.remove("sel", "hlink"));
+    const box = btn.closest(".heat-detail");
+    if (box) { box.innerHTML = ""; box.dataset.no = ""; }
+    return;
+  }
   if (act === "ct-cat") {
     const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
     if (!quiz) return;
@@ -2883,8 +3035,8 @@ function render() {
     return;
   }
   if (location.hash === "#wrong") { SESSION = null; CRUSH = null; renderWrong(); return; }
-  const m = location.hash.match(/^#q\/([^/]+)(\/weak)?/);
-  if (m) renderQuiz(decodeURIComponent(m[1]), !!m[2]);
+  const m = location.hash.match(/^#q\/([^/]+)(?:\/(weak|heat))?/);
+  if (m) renderQuiz(decodeURIComponent(m[1]), m[2] === "weak", m[2] === "heat");
   else { SESSION = null; renderHome(); }
 }
 window.addEventListener("hashchange", render);
