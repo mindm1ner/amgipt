@@ -1391,16 +1391,30 @@ function ctCardCtx(card) {
   q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => area.set(id, r.sub || q.title || ""))));
   return { quiz, q, area };
 }
+/* 같은 [범주 · 영역 · 학년군] 묶음 열쇠. 이 안의 내용 요소는 나열이라 순서가 없다.
+   ⚠️ 화면의 <td>로 묶으면 안 된다. 같은 범주가 여러 행으로 쪼개진 표가 있다
+   (음악 연주의 지식⋅이해는 행 라벨 없이 3행). 그래서 라벨로 묶는다.
+   원문 모드(조항)는 낱말 자리가 곧 문장이라 묶지 않는다 */
+function ctGroupKey(ctx, no) {
+  if (!ctx || ctx.quiz.kind !== "ct") return null;
+  const s = (ctx.q.subs || []).find(x => x.no === no);
+  if (!s || !s.ct) return null;
+  return `${s.ct.cat}|${ctx.area.get(no) || ""}|${s.ct.gr}`;
+}
+
 function ctWhere(s, area) {
   const a = area && area.get(s.no);
   return `${(s.ct.cat || "").replace("⋅", "·")} · ${a ? a + " · " : ""}${s.ct.gr}`;
 }
 
-/* 쓴 답이 이 표의 다른 칸 정답과 글자 그대로 같은가 (자리 바꿔 넣기) */
-function ctMisplaced(q, sub, val) {
+/* 쓴 답이 이 표의 다른 칸 정답과 글자 그대로 같은가 (자리 바꿔 넣기).
+   skip: 같은 칸 묶음(같은 범주 · 영역 · 학년군)의 빈칸 번호. 그 안에서는 순서가
+   없어서 채점이 이미 인정했으므로, 자리를 바꿔 썼다고 짚으면 안 된다 */
+function ctMisplaced(q, sub, val, skip) {
   const n = norm(val);
   if (!n) return null;
-  const other = q.subs.find(s => s.no !== sub.no && norm(s.answer) === n);
+  const other = q.subs.find(s =>
+    s.no !== sub.no && !(skip && skip.has(s.no)) && norm(s.answer) === n);
   if (!other) return null;
   return { t: (other.ct.cat === sub.ct.cat && other.ct.gr !== sub.ct.gr) ? "grade" : "area", ref: other.no, other };
 }
@@ -1425,14 +1439,16 @@ function ctRescore(card) {
 /* material: "표"(내체표) 또는 "조항"(총론·창의적 체험활동).
    내체표는 학년군·영역을 바꿔 쓰는 것이 대표 실점이지만, 총론·창체는 학년군 칸이
    아예 없고 "뜻은 맞는데 원문 낱말이 아닌 것"이 대표 실점이라 진단 지침이 다르다.
-   함수가 옛 버전이면 이 값을 무시하고 예전대로 돈다 */
-async function aiJudgeTable(topic, cells, asked, material) {
+   함수가 옛 버전이면 이 값을 무시하고 예전대로 돈다.
+   order: "free" 는 표 빈칸형에서만 켠다. 같은 칸 안 내용 요소는 나열이라 순서가
+   없어서다. 맥락형은 장면 하나가 내용 요소 하나를 가리키므로 켜면 안 된다 */
+async function aiJudgeTable(topic, cells, asked, material, freeOrder) {
   let res;
   try {
     res = await fetch(AI_FN_URL, {
       method: "POST",
       headers: { "content-type": "application/json", apikey: AI_FN_KEY, Authorization: "Bearer " + AI_FN_KEY },
-      body: JSON.stringify({ type: "grade_table", topic, cells, asked, material })
+      body: JSON.stringify({ type: "grade_table", topic, cells, asked, material, order: freeOrder ? "free" : "fixed" })
     });
   } catch { throw new Error("서버 연결 안 됨"); }
   const text = await res.text();
@@ -1454,7 +1470,13 @@ async function ctDiagnose(card) {
     const sub = byNo.get(no);
     if (!sub) return;
     const val = b.querySelector(".ctin").value.trim();
-    wrong.push({ b, no, sub, val, mis: ctMisplaced(q, sub, val) });
+    /* 같은 묶음(범주 · 영역 · 학년군)의 빈칸 번호. 채점이 이미 순서를 봐준 자리라
+       자리 바꿈으로 짚지 않는다 */
+    const gk = ctGroupKey(ctx, no);
+    const sibs = gk
+      ? new Set(q.subs.filter(x => ctGroupKey(ctx, x.no) === gk).map(x => x.no))
+      : null;
+    wrong.push({ b, no, sub, val, mis: ctMisplaced(q, sub, val, sibs) });
   });
   if (!wrong.length) return;
 
@@ -1479,7 +1501,8 @@ async function ctDiagnose(card) {
       `${quiz.range} · ${q.title}`,
       q.subs.map(s => ({ no: s.no, cat: (s.ct.cat || "").replace("⋅", "·"), area: area.get(s.no) || "", gr: s.ct.gr, ans: s.answer })),
       asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" })),
-      quiz.subject === "내체표" ? "표" : "조항"
+      quiz.subject === "내체표" ? "표" : "조항",
+      quiz.subject === "내체표"   // 같은 칸 안에서는 순서 무관 (표 빈칸형만)
     );
     const byId = new Map(wrong.map(w => [ctNo(w.no), w]));
     let n = 0;
@@ -2487,10 +2510,36 @@ function onAppClick(e) {
     const card = btn.closest(".ct-card");
     const reveal = act === "ct-reveal";
     let ok = 0, all = 0;
+    /* 같은 [범주 · 영역 · 학년군] 안의 빈칸끼리는 순서가 없다. 내용 요소를 나열해 둔
+       것이라 몇 번째로 쓰느냐는 시험에서 묻지 않는다. 자기 답부터 맞춰 보고, 남은
+       것끼리 묶음 안에서 짝을 짓는다 (정답 하나는 한 번만 쓰인다. 같은 걸 두 번
+       쓰면 하나만 인정). 묶음 열쇠가 없는 것(원문 모드)은 혼자 두어 자기 답만 본다 */
+    const hitSet = new Set();
+    const gctx = ctCardCtx(card);
+    const groups = new Map();
+    card.querySelectorAll(".ctb").forEach(b => {
+      const key = ctGroupKey(gctx, String(b.dataset.sid).split("|").pop()) || b;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(b);
+    });
+    for (const list of groups.values()) {
+      const left = [];          // 자기 답과 안 맞은 빈칸
+      const pool = new Map();   // 아직 안 쓰인 정답 (norm → 남은 개수)
+      for (const b of list) {
+        const v = norm(b.querySelector(".ctin").value);
+        const a = norm(b.dataset.ans);
+        if (v && v === a) { hitSet.add(b); continue; }
+        left.push({ b, v });
+        pool.set(a, (pool.get(a) || 0) + 1);
+      }
+      for (const { b, v } of left) {
+        if (v && pool.get(v)) { pool.set(v, pool.get(v) - 1); hitSet.add(b); }
+      }
+    }
     card.querySelectorAll(".ctb").forEach(b => {
       const inp = b.querySelector(".ctin");
       const ans = b.dataset.ans;
-      const hit = norm(inp.value) !== "" && norm(inp.value) === norm(ans);
+      const hit = hitSet.has(b);
       all++;
       if (hit) ok++;
       b.classList.toggle("hit", hit);
