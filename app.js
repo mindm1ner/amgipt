@@ -507,9 +507,13 @@ function dayLogHtml(day) {
   const body = [...groups.entries()].map(([key, list]) => {
     const bad = list.filter(x => x.r.r !== "O");
     const ok = list.filter(x => x.r.r === "O");
+    /* 내체표 묶음이면 그 과목 표로 건너뛴다. 이 날 틀린 자리가 표 어디였는지는 표에서만 보인다 */
+    const ct = list.find(x => x.card && x.card.quiz.kind === "ct");
     return `
     <div class="dgrp"><div class="dgrp-h">${esc(key)}<span>${
-      bad.length ? `틀림 ${bad.length} · ` : ""}맞음 ${ok.length}</span></div>
+      bad.length ? `틀림 ${bad.length} · ` : ""}맞음 ${ok.length}${
+      ct ? ` <button class="dgrp-map" data-act="home-go"
+        data-sel="ctmap:${esc(ct.card.quiz.id)}">표로 보기</button>` : ""}</span></div>
     ${rowsOf(bad)}
     ${ok.length ? `<details class="dok"><summary>맞힌 것 ${ok.length}장</summary>
       ${rowsOf(ok)}</details>` : ""}</div>`;
@@ -840,8 +844,37 @@ function rowsHtml(list) {
   }).join("");
 }
 
+/* 기록이 쌓인 내체표 묶음. 기록 탭 위에 과목 칩으로 놓아 표를 바로 연다.
+   날짜 목록은 "그날 무엇을 했나"만 답하고 "어느 자리가 약한가"는 답하지 못한다.
+   내체표 오답은 자리를 틀린 것이라 그 답이 필요하고, 답할 수 있는 형태는 표뿐이다 */
+function ctLogSubjects() {
+  const out = [];
+  for (const quiz of DATA) {
+    if (quiz.kind !== "ct") continue;
+    let n = 0, hot = 0;
+    for (const q of quiz.questions) for (const s of q.subs) {
+      const { w, lv } = ctHeat(subId(quiz, q, s));
+      if (w) n++;
+      if (lv) hot++;
+    }
+    if (n) out.push({ quiz, n, hot });
+  }
+  return out.sort((a, b) => b.hot - a.hot || b.n - a.n);
+}
+
 function homeMainHtml() {
   const sel = HOME_SEL;
+
+  /* 기록 탭 안에서 여는 표. 화면을 옮기지 않고 기록 자리에서 펼친다 */
+  if (sel.startsWith("ctmap:")) {
+    const quiz = DATA.find(z => z.id === sel.slice(6));
+    if (!quiz) return `<p class="mt-empty">표를 찾을 수 없어요.</p>`;
+    return `<div class="mhead"><div>
+        <button class="btn ghost sm" data-act="home-go" data-sel="st:log">${ico("back")} 기록</button>
+        <h2>${esc(quiz.range || quiz.title)} 표</h2>
+        <p>틀린 자리에 형광펜이 쌓여요. 칸을 누르면 그때 쓴 답이 나와요</p></div></div>
+      ${ctHeatHtml(quiz)}`;
+  }
 
   if (sel === "st:log") {
     const log = dailyLog();
@@ -854,6 +887,17 @@ function homeMainHtml() {
         <div><b>${total}</b><span>누적</span></div>
         <div><b>${log.length}</b><span>기록이 있는 날</span></div>
       </div>
+      ${(() => {
+        const cts = ctLogSubjects();
+        if (!cts.length) return "";
+        return `<div class="ctmapbar">
+          <div class="cs-head"><b>내체표, 표로 보기</b>
+            <span>틀린 자리에 형광펜이 쌓여요</span></div>
+          <div class="cs-row">${cts.map(c => `<button class="ck" data-act="home-go"
+            data-sel="ctmap:${esc(c.quiz.id)}">${esc(c.quiz.range || c.quiz.title)}${
+            c.hot ? `<span class="n hot">${c.hot}</span>` : `<span class="n">자국 ${c.n}</span>`}</button>`).join("")}</div>
+        </div>`;
+      })()}
       ${log.length ? log.map(([d, o]) => {
         const t = o.n || 1;
         const [, mo, dy] = d.split("-");
@@ -1210,7 +1254,8 @@ function ctHeatTableHtml(quiz, q, qi) {
     ? table + `<div class="heat-detail"></div>`
     : `<details class="hclean"><summary>틀린 칸이 없어요 · 표 펼치기</summary>
         ${table}<div class="heat-detail"></div></details>`;
-  return `<section class="q-card ct-heat" data-qi="${qi}">
+  /* data-quiz: 기록 탭 안에서도 열리므로 주소창(#q/...)을 못 믿는다. 표가 제 묶음을 들고 있게 한다 */
+  return `<section class="q-card ct-heat" data-qi="${qi}" data-quiz="${esc(quiz.id)}">
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
         <span class="qpts">${hotN ? `붉은 칸 ${hotN}` : wrongN ? `자국 ${wrongN}` : "깨끗"}</span></div>
       ${body}</section>`;
@@ -2661,8 +2706,10 @@ function onAppClick(e) {
      맞바꿈 버릇이 표 위에서 보인다 */
   if (act === "heat-cell") {
     const sec = btn.closest(".ct-heat");
-    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
-    if (!sec || !quiz) return;
+    if (!sec) return;
+    const quiz = DATA.find(d => d.id === (sec.dataset.quiz
+      || decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0])));
+    if (!quiz) return;
     const q = quiz.questions[+sec.dataset.qi];
     const no = btn.dataset.no;
     const sub = q && q.subs.find(s => String(s.no) === String(no));
