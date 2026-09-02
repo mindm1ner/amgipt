@@ -1731,27 +1731,20 @@ function wonPara(node) {
   return el ? el.closest(".wl") : null;
 }
 
-function wonPick() {
-  if (!WON_EDIT) return;
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed) return;
-  const p = wonPara(sel.anchorNode), p2 = wonPara(sel.focusNode);
-  if (!p || p !== p2) { sel.removeAllRanges(); return; }   // 두 줄에 걸치면 안 받는다
-
+/* 줄 안의 [a, b) 를 빈칸으로 만든다. 드래그로 오든 낱말 탭으로 오든 여기로 모인다 */
+let WON_LAST_ADD = 0;
+function wonAdd(p, a, b) {
   const card = p.closest(".ct-card");
-  const quiz = DATA.find(z => z.id === card.dataset.won);
+  const quiz = card && DATA.find(z => z.id === card.dataset.won);
+  if (!quiz) return;
   const dk = card.dataset.dk, i = +p.dataset.i;
   const doc = wonDoc(quiz, dk);
+  if (!doc) return;
   const line = doc.lines[i] || "";
 
-  let a = wonOffset(p, sel.anchorNode, sel.anchorOffset);
-  let b = wonOffset(p, sel.focusNode, sel.focusOffset);
-  if (a < 0 || b < 0) { sel.removeAllRanges(); return; }
-  if (a > b) { const t = a; a = b; b = t; }
   /* 양끝 공백은 빼 준다. 드래그가 한 칸 넘치는 일이 잦다 */
   while (a < b && /\s/.test(line[a])) a++;
   while (b > a && /\s/.test(line[b - 1])) b--;
-  sel.removeAllRanges();
   if (b - a < 1) return;
 
   const mine = wonList().filter(x => x.q === quiz.id && x.dk === dk && x.i === i && !x.o);
@@ -1766,6 +1759,7 @@ function wonPick() {
   const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
   if (off >= 0) L.splice(off, 1);
   L.push(nb);
+  WON_LAST_ADD = Date.now();
   persist();
   wonBuild();
   const keepPlace = wonKeepPlace(card);
@@ -1774,6 +1768,69 @@ function wonPick() {
   /* 열쇠가 글자에서 나오므로, 지웠다 다시 뚫은 자리는 지난 기록이 그대로 이어진다 */
   const kept = history(wonSid(quiz.id, nb)).length;
   toast("빈칸 추가: " + nb.a + (kept ? " (지난 기록 " + kept + "건 이어받음)" : ""));
+}
+
+/* 고른 글자를 빈칸으로. range 를 받는 이유 —
+   iOS 는 확인 막대를 누르는 그 탭으로 선택을 지워 버려서, 눌린 뒤에 읽으면 이미 없다.
+   그래서 막대를 띄울 때 범위를 떠 두었다가 그것을 넘긴다 */
+function wonPick(range) {
+  if (!WON_EDIT) return;
+  const sel = window.getSelection();
+  const rg = range || (sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null);
+  if (!rg) return;
+  const p = wonPara(rg.startContainer), p2 = wonPara(rg.endContainer);
+  if (!p || p !== p2) { if (sel) sel.removeAllRanges(); return; }   // 두 줄에 걸치면 안 받는다
+  const a = wonOffset(p, rg.startContainer, rg.startOffset);
+  const b = wonOffset(p, rg.endContainer, rg.endOffset);
+  if (sel) sel.removeAllRanges();
+  if (a < 0 || b < 0) return;
+  wonAdd(p, Math.min(a, b), Math.max(a, b));
+}
+
+/* ---------- 낱말을 톡 눌러 뚫기 ----------
+   손가락으로 글자를 정확히 고르는 건 만만치 않다. 길게 눌러 손잡이가 나오길 기다렸다가
+   끌어야 하고, 조금만 어긋나면 화면이 스크롤된다. 그래서 '빈칸 정하기'에서는
+   **낱말을 한 번 누르면 그 낱말이 빈칸**이 되게 했다. 두 낱말 이상만 드래그로. */
+const WON_WORD_STOP = /[\s.,·⋅()[\]{}「」『』‘’“”'"?!:;~\/]/;
+function wonCaretAt(x, y) {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  if (document.caretPositionFromPoint) {
+    const c = document.caretPositionFromPoint(x, y);
+    if (!c) return null;
+    const r = document.createRange();
+    r.setStart(c.offsetNode, c.offset);
+    return r;
+  }
+  return null;
+}
+function wonTapWord(x, y, target) {
+  if (!WON_EDIT || (!x && !y)) return;
+  if (Date.now() - WON_LAST_ADD < 600) return;          // 방금 뚫은 직후의 click 은 무시
+  if (!target || !target.closest) return;
+  if (target.closest(".wb, .ctb, button, a")) return;   // 뚫린 자리 지우기·단추가 우선
+  const p = target.closest(".wl");
+  if (!p || !p.closest(".won-body")) return;
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;                  // 고른 게 있으면 그쪽을 따른다
+
+  const card = p.closest(".ct-card");
+  const quiz = card && DATA.find(z => z.id === card.dataset.won);
+  const doc = quiz && wonDoc(quiz, card.dataset.dk);
+  if (!doc) return;
+  const line = doc.lines[+p.dataset.i] || "";
+
+  const cr = wonCaretAt(x, y);
+  if (!cr || !p.contains(cr.startContainer)) return;
+  let at = wonOffset(p, cr.startContainer, cr.startOffset);
+  if (at < 0) return;
+  // 낱말 사이(공백·문장부호)를 눌렀으면 바로 앞 글자를 집는다
+  if (at >= line.length || WON_WORD_STOP.test(line[at])) at--;
+  if (at < 0 || WON_WORD_STOP.test(line[at])) return;
+
+  let a = at, b = at + 1;
+  while (a > 0 && !WON_WORD_STOP.test(line[a - 1])) a--;
+  while (b < line.length && !WON_WORD_STOP.test(line[b])) b++;
+  wonAdd(p, a, b);
 }
 
 function wonDrop(card, i, s) {
@@ -1862,7 +1919,9 @@ function wonHtml(quiz, weakOnly, pred) {
   const head = `
     <div class="ctscope wonbar">
       <div class="cs-head"><b>원문 모드</b>
-        <span>원문에서 외울 자리를 드래그하면 빈칸이 돼요. 뚫은 자리 ${n}곳</span></div>
+        <span>${WON_EDIT
+          ? "낱말을 톡 누르면 그 낱말이 빈칸이 돼요. 여러 낱말은 드래그해서 아래 막대를 누르세요"
+          : "원문에서 외울 자리를 골라 빈칸으로 만들어요"} · 뚫은 자리 ${n}곳</span></div>
       <div class="cs-row">
         <button class="ck" data-act="won-edit" aria-pressed="${WON_EDIT}">빈칸 정하기</button>
         ${WON_EDIT && n ? `<button class="ck danger" data-act="won-clear">이 원문 빈칸 모두 빼기</button>` : ""}
@@ -3499,89 +3558,66 @@ document.addEventListener("mouseup", e => { if (e.target.closest(".won-body")) w
    선택이 바뀌는 것은 어디서나 selectionchange 로 잡히므로 그것을 쓴다. 다만 자동으로
    뚫지는 않는다 — 손가락 선택은 손잡이로 몇 번씩 다듬게 되고, 그때마다 빈칸이 생기면
    못 쓴다. 선택이 멎으면 그 자리에 단추를 띄우고, 누를 때 뚫는다. */
-let WON_SEL_T = 0;
+/* ---------- 고른 글자를 빈칸으로 만드는 확인 막대 ----------
+   iOS 는 손가락으로 글자를 고를 때 mouseup 을 보내지 않는다(선택 손잡이를 끄는
+   제스처라 마우스 이벤트가 합성되지 않는다). 그래서 마우스에만 걸어 두면 아이패드에서는
+   아무리 드래그해도 빈칸이 안 생긴다. 선택이 바뀌는 것은 selectionchange 로 잡힌다.
+
+   ⚠️ 막대를 고른 글자 옆에 붙이면 안 된다. 애플의 선택 메뉴(복사·조회)가 바로 그 자리에
+   뜨는데 그것이 페이지 위에 그려져서, 우리 단추는 그 아래에 깔려 보이지 않는다.
+   그래서 **화면 아래에 고정**한다. 덮일 일이 없고 엄지로 누르기도 쉽다. */
+let WON_SEL_T = 0, WON_SEL_RANGE = null;
 function wonSelBtn() {
   let el = document.querySelector(".wonpick");
   if (!el) {
     el = document.createElement("button");
     el.className = "wonpick";
     el.type = "button";
-    el.textContent = "여기 빈칸으로";
-    /* pointerdown 에서 막아야 선택이 안 풀린다. click 까지 가면 이미 선택이 사라진다 */
+    /* pointerdown 에서 막아야 선택이 안 풀린다. click 까지 가면 iOS 는 이미 지운 뒤다 */
     el.addEventListener("pointerdown", ev => {
       ev.preventDefault();
       ev.stopPropagation();
-      wonPick();
+      wonPick(WON_SEL_RANGE);
       wonSelHide();
     });
     document.body.appendChild(el);
   }
   return el;
 }
-let WON_SEL_RAF = 0, WON_SEL_TICK = 0;
 function wonSelHide() {
-  cancelAnimationFrame(WON_SEL_RAF);
-  clearInterval(WON_SEL_TICK);
-  WON_SEL_RAF = WON_SEL_TICK = 0;
+  WON_SEL_RANGE = null;
   const el = document.querySelector(".wonpick");
   if (el) el.classList.remove("show");
-}
-/* 단추가 떠 있는 동안은 프레임마다 선택 자리를 다시 재서 따라다닌다.
-   scroll 이벤트에 걸면 될 것 같지만, 무엇이 스크롤되느냐가 기기마다 달라서
-   (iOS 는 visualViewport 가 따로 움직인다) 안 오는 경우가 있다. 선택 하나 재는
-   일이라 값이 싸고, '빈칸 정하기'로 글자를 고른 잠깐만 돈다 */
-function wonSelTrack() {
-  cancelAnimationFrame(WON_SEL_RAF);
-  WON_SEL_RAF = requestAnimationFrame(() => {
-    const el = document.querySelector(".wonpick");
-    if (!el || !el.classList.contains("show")) { WON_SEL_RAF = 0; return; }
-    wonSelShow();
-  });
-  /* rAF 는 화면이 가려지면 아예 멎는다(다른 창을 보다 돌아오는 경우). 느슨한
-     타이머를 하나 같이 둬서, 어느 쪽이 멎어도 자리는 따라가게 한다 */
-  if (!WON_SEL_TICK) {
-    WON_SEL_TICK = setInterval(() => {
-      const el = document.querySelector(".wonpick");
-      if (!el || !el.classList.contains("show")) { clearInterval(WON_SEL_TICK); WON_SEL_TICK = 0; return; }
-      wonSelPlace();
-    }, 120);
-  }
 }
 function wonSelShow() {
   const sel = window.getSelection();
   if (!WON_EDIT || !sel || sel.isCollapsed || !sel.rangeCount) return wonSelHide();
   const p = wonPara(sel.anchorNode), p2 = wonPara(sel.focusNode);
-  // 두 줄에 걸친 선택은 어차피 안 받으므로 단추도 띄우지 않는다
+  // 두 줄에 걸친 선택은 어차피 안 받으므로 막대도 띄우지 않는다
   if (!p || p !== p2 || !p.closest(".won-body")) return wonSelHide();
-  const r = sel.getRangeAt(0).getBoundingClientRect();
-  if (!r || (!r.width && !r.height)) return wonSelHide();
+  const txt = sel.toString().trim();
+  if (!txt) return wonSelHide();
 
+  WON_SEL_RANGE = sel.getRangeAt(0).cloneRange();   // 눌리는 순간 선택이 사라져도 되게
   const el = wonSelBtn();
+  el.innerHTML = '<b>' + esc(txt.length > 24 ? txt.slice(0, 24) + "…" : txt) + '</b> 빈칸으로 만들기';
   el.classList.add("show");
-  wonSelPlace();
-  wonSelTrack();
-}
-/* 선택 자리에 단추를 붙인다. 위가 좁으면 아래에 붙인다 */
-function wonSelPlace() {
-  const el = document.querySelector(".wonpick");
-  const sel = window.getSelection();
-  if (!el || !sel || sel.isCollapsed || !sel.rangeCount) return;
-  const r = sel.getRangeAt(0).getBoundingClientRect();
-  if (!r || (!r.width && !r.height)) return;
-  const w = el.offsetWidth || 120, h = el.offsetHeight || 34;
-  const above = r.top - h - 10;
-  el.style.top = (above > 8 ? above : Math.min(r.bottom + 10, innerHeight - h - 8)) + "px";
-  el.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8)) + "px";
 }
 document.addEventListener("selectionchange", () => {
   clearTimeout(WON_SEL_T);
-  WON_SEL_T = setTimeout(wonSelShow, 300);   // 손잡이를 다듬는 동안은 기다린다
+  WON_SEL_T = setTimeout(wonSelShow, 250);   // 손잡이를 다듬는 동안은 기다린다
 });
-/* 화면을 옮기거나 확대하면 자리를 다시 잡는다. 프레임 추적이 놓치는 경우의 보험 */
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", wonSelTrack);
-  window.visualViewport.addEventListener("scroll", wonSelTrack);
-}
+/* 손가락을 뗀 직후에도 한 번 살펴본다. selectionchange 만 믿기에는 기기마다 다르다 */
+document.addEventListener("touchend", e => {
+  if (!WON_EDIT || !e.target || !e.target.closest || !e.target.closest(".won-body")) return;
+  clearTimeout(WON_SEL_T);
+  WON_SEL_T = setTimeout(wonSelShow, 120);
+}, { passive: true });
+/* 낱말 하나를 톡 누르면 그 낱말이 빈칸 (손가락으로 가장 확실한 길) */
+document.addEventListener("click", e => {
+  if (!WON_EDIT) return;
+  wonTapWord(e.clientX, e.clientY, e.target);
+});
 document.addEventListener("click", onAppClick);
 // 답안 초안 자동저장 (입력할 때마다)
 document.addEventListener("input", e => {
