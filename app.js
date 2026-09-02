@@ -1855,6 +1855,7 @@ function wonHtml(quiz, weakOnly, pred) {
    자리 바꿈은 글자가 똑같으므로 고정 코드가 먼저 확실히 잡고, 해석만 AI에 맡긴다. */
 const CT_ERR_KO = {
   ok_form: "표기 차이", partial: "일부만", grade: "학년군 바뀜", area: "영역 바뀜",
+  cat: "범주 바뀜",
   mix: "두 칸 섞임", confuse: "다른 개념", other: "다른 내용", blank: "안 씀",
   /* 원문 모드 전용. 조항 글에는 범주·학년군이 없어 "영역 바뀜"이라 부를 수 없다 */
   spot: "다른 자리"
@@ -1924,7 +1925,7 @@ function ctMisplaced(q, sub, val, skip) {
   /* 원문 모드는 범주·학년군이 없어 자리 종류를 가를 수 없다. 같은 낱말을 다른 자리에
      썼다는 것까지만 말한다 (같은 조항에서 같은 낱말을 여러 곳에 뚫는 일이 흔하다) */
   if (!other.ct || !sub.ct) return { t: "spot", ref: other.no, other };
-  return { t: (other.ct.cat === sub.ct.cat && other.ct.gr !== sub.ct.gr) ? "grade" : "area", ref: other.no, other };
+  return { t: other.ct.cat === sub.ct.cat ? "grade" : "cat", ref: other.no, other };
 }
 
 function ctNoteEl(b, type, text, where) {
@@ -2035,7 +2036,7 @@ async function ctDiagnose(card) {
       if (!w) continue;
       let type = CT_ERR_KO[it.type] ? it.type : "other";
       /* 원문에는 영역·학년군이 없다. AI가 그 이름으로 불러도 "다른 자리"로 바꿔 적는다 */
-      if (!w.sub.ct && (type === "area" || type === "grade")) type = "spot";
+      if (!w.sub.ct && (type === "area" || type === "cat" || type === "grade")) type = "spot";
       let note = (it.note || "").trim();
       /* 원문에서는 AI가 칸을 "2_70번 칸"처럼 내부 좌표로 부른다(줄_글자).
          읽는 사람에게는 뜻이 없는 숫자라 그 자리의 원문 낱말로 바꿔 적는다 */
@@ -2103,6 +2104,13 @@ function ctxMe(sub) {
   return { cat: (sub.ct.cat || "").replace("⋅", "·"), area: sub.ct.area || "", gr: sub.ct.gr || "" };
 }
 function ctxSame(c, me) { return c.cat === me.cat && c.area === me.area && c.gr === me.gr; }
+/* 어긋난 자리를 그대로 부른다. '영역 바뀜'을 뭉뚱그려 쓰면 같은 영역 안에서
+   범주만 건너뛴 것(표현 지식·이해 ↔ 표현 가치·태도)이 영역 잘못으로 보인다 */
+function ctxKind(cell, me) {
+  if (cell.area !== me.area) return "area";
+  if (cell.cat !== me.cat) return "cat";
+  return "grade";
+}
 
 /* 쓴 답이 내체표 **다른 칸**의 정답과 글자 그대로 같은가 (자리 바꿔 넣기).
    같은 글자가 표 안에 여러 번 나오는 과목이 있어서(영어·음악 11건), 자기 답과 같으면
@@ -2114,7 +2122,22 @@ function ctxMisplaced(cells, sub, val) {
   const hits = cells.filter(c => norm(c.ans) === n && !ctxSame(c, me));
   if (!hits.length) return null;
   const hit = hits.find(c => c.cat === me.cat && c.area === me.area) || hits[0];
-  return { t: (hit.cat === me.cat && hit.area === me.area) ? "grade" : "area", cell: hit };
+  return { t: ctxKind(hit, me), cell: hit };
+}
+
+/* 글자 그대로 같은 칸이 없을 때, 쓴 말이 **다른 칸 내용 요소 안에 든** 말인지 본다.
+   '주제 표현'은 어느 칸의 답도 아니지만 '주제 표현의 의지'(가치·태도·5~6학년) 안에 있다.
+   표현 주제 ↔ 주제 표현처럼 앞뒤만 뒤집힌 짝을 짚으려는 것이라, 짧은 말은 보지 않는다
+   ('표현' 같은 두 글자는 거의 모든 칸에 걸린다) */
+function ctxInside(cells, sub, val) {
+  const n = norm(val);
+  if (n.length < 4 || n === norm(sub.answer)) return null;
+  const me = ctxMe(sub);
+  const hits = cells.filter(c =>
+    !ctxSame(c, me) && norm(c.ans) !== n && norm(c.ans).includes(n));
+  if (!hits.length) return null;
+  const hit = hits.find(c => c.cat === me.cat && c.area === me.area) || hits[0];
+  return { cell: hit, t: ctxKind(hit, me) };
 }
 
 async function ctxDiagnose(subEl, quiz, q, sub, val) {
@@ -2137,11 +2160,19 @@ async function ctxDiagnose(subEl, quiz, q, sub, val) {
   }
 
   /* 1) 고정 코드가 확실히 아는 것부터 (AI가 꺼져 있어도, 실패해도 남는다) */
-  const mis = ctxMisplaced(cells, sub, val);
+  let mis = ctxMisplaced(cells, sub, val);
   if (mis) {
     const note = `${ctxWhere(mis.cell)} 칸의 내용이에요`;
     box.innerHTML = `<div class="cd-sum"><span class="cttag t-${mis.t}">${CT_ERR_KO[mis.t]}</span>${esc(note)}</div>`;
     setErr({ t: mis.t, r: mis.cell.no, w: val, n: note });
+  } else {
+    const ins = ctxInside(cells, sub, val);
+    if (ins) {
+      const note = `'${ins.cell.ans}'(${ctxWhere(ins.cell)}) 안에 있는 말이에요`;
+      box.innerHTML = `<div class="cd-sum"><span class="cttag t-${ins.t}">${CT_ERR_KO[ins.t]}</span>${esc(note)}</div>`;
+      setErr({ t: ins.t, r: ins.cell.no, w: val, n: note });
+      mis = ins;   // AI 에게도 그 칸을 같이 보낸다
+    }
   }
   if (!aiOn()) { if (!mis) box.remove(); return; }
 
@@ -2707,7 +2738,7 @@ function showReveal(subEl, graded) {
     /* 맥락형 내체표는 틀렸을 때 유형까지 갈라 준다. 표를 안 보여주는 형식이라
        내가 쓴 답이 옆 칸 내용이었다는 것을 본인은 알 수 없다 (reveal 이 그려진 뒤에 붙인다) */
     const ctxOwner = findSub(subEl);
-    if (ctxOwner.quiz.kind === "ctx" && sub.ct && !flags[0]) {
+    if ((ctxOwner.quiz.kind === "ctx" || ctxOwner.quiz.kind === "sgi") && sub.ct && !flags[0]) {
       setTimeout(() => ctxDiagnose(subEl, ctxOwner.quiz, ctxOwner.q, sub, inputs[0] || ""), 0);
     }
   } else if (graded && sub.type === "essay") {
