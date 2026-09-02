@@ -247,6 +247,35 @@ for (const set of (window.DAJIGI_CTX || [])) {
   });
 }
 
+/* ---------- 내용 체계표: 성취기준형 ----------
+   성취기준을 주고, 빈칸으로 비운 용어를 **써서** 그 자리의 내용 요소를 쓰게 한다.
+   빈칸에 들어갈 말이 답이 아니라, 그 말로 이루어진 내용 요소가 답이다.
+   2025학년도 초등 미술 4번 2)의 골격 그대로다.
+
+   표를 통째로 외운 것과 문장 속에서 알아보는 것은 다르다. 맥락형이 수업 장면에서
+   찾게 한다면 이쪽은 성취기준 원문에서 되짚게 한다.
+
+   ⚠️ 카드 열쇠(문항 번호 = 성취기준 코드, 칸 번호 = 범주)는 자리가 아니라 이름이다.
+      성취기준이 중간에 하나 늘어도 쌓인 기록이 밀리지 않는다. */
+for (const set of (window.DAJIGI_SGI || [])) {
+  DATA.push({
+    ...set,
+    questions: set.questions.map(q => ({
+      ...q,
+      points: 1,
+      body: "",
+      frame: `성취기준 → 내용 요소 · ${q.gr} · ${q.area}`,
+      subs: q.subs.map(s => ({
+        no: s.no, type: "term", hideHead: true, points: 1,
+        prompt: s.ask,
+        answer: s.a,
+        parts: [{ label: "내용 요소", accept: [s.a] }],
+        ct: { cat: s.cat, gr: q.gr, area: q.area }
+      }))
+    }))
+  });
+}
+
 /* ---------- 저장소 ---------- */
 function loadStore() {
   try {
@@ -734,6 +763,15 @@ function rangeGroups() {
 function openRangeSheet(name) {
   const quizzes = (rangeGroups().get(name)) || [];
   if (!quizzes.length) return;
+  /* 같은 모드가 둘 이상이면(미술 원문이 성취기준·안내서 둘) 이름만으로는 못 가른다.
+     그럴 때만 어디서 온 자료인지를 붙인다 */
+  const kindOf = q => q.kind || (q.mode === "review" ? "review" : "exam");
+  const dup = new Set();
+  const seen = new Set();
+  for (const q of quizzes) {
+    const k = kindOf(q);
+    if (seen.has(k)) dup.add(k); else seen.add(k);
+  }
   const rows = quizzes.map(quiz => {
     const s = quizStats(quiz);
     const kind = quiz.kind || (quiz.mode === "review" ? "review" : "exam");
@@ -741,15 +779,17 @@ function openRangeSheet(name) {
       ct: ["grid", "표 빈칸형", "표의 내용 요소를 전부 비우고 채운다"],
       won: ["doc", "원문 모드", "원문을 띄워 두고 외울 자리를 직접 뚫는다"],
       ctx: ["recall", "맥락형", "수업 장면을 보고 그 칸의 내용 요소를 쓴다"],
+      sgi: ["recall", "성취기준형", "성취기준의 빈칸 용어를 써서 그 자리의 내용 요소를 쓴다"],
       review: ["recall", "복습 모드", "단권화 키워드 인출·설명"],
       exam: ["doc", "기출 모드", "기출 프레임 문서형 풀이"]
     };
     const [icon, name, desc] = META[kind] || META.exam;
+    const label = dup.has(kind) ? `${name} · ${quiz.subject}` : name;
     return `
     <div class="mode-row">
       <div class="m-icon">${ico(icon)}</div>
       <div class="m-main">
-        <div class="m-name">${name}</div>
+        <div class="m-name">${esc(label)}</div>
         <div class="m-desc">${desc} · 소문항 ${s.total} · 풀어봄 ${s.tried}</div>
       </div>
       <div class="m-acts">
@@ -766,7 +806,7 @@ function openRangeSheet(name) {
   const o = $(".sheeto");
   o.querySelector(".sheet").innerHTML =
     `<div class="grab"></div>
-     <h3>${esc(quizzes[0].subject)} · ${esc(name)}<small>모드를 골라 시작하세요</small></h3>` + rows;
+     <h3>${esc(name)}<small>모드를 골라 시작하세요</small></h3>` + rows;
   o.classList.add("show");
 }
 
@@ -2185,7 +2225,8 @@ function quizCardsHtml(quiz, weakOnly, pred) {
 
     return `
     <section class="q-card">
-      <div class="q-head"><span class="qno">${q.no}번 · ${esc(q.title)}</span>
+      <div class="q-head"><span class="qno">${/^\d+$/.test(String(q.no))
+        ? q.no + "번" : esc(String(q.no))} · ${esc(q.title)}</span>
         ${q.points ? `<span class="qpts">[${q.points}점]</span>` : ""}</div>
       <div class="q-frame">${esc(q.frame)}</div>
       ${q.body ? `<div class="q-body md">${md(q.body)}</div>` : ""}
