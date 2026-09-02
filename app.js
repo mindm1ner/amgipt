@@ -1723,14 +1723,19 @@ function wonOffset(p, node, off) {
   return -1;
 }
 
+/* 선택 지점이 어느 원문 줄인가. iOS 는 글자가 아니라 요소에 걸치는 일이 있어
+   텍스트 노드만 가정하면 놓친다 */
+function wonPara(node) {
+  if (!node) return null;
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  return el ? el.closest(".wl") : null;
+}
+
 function wonPick() {
   if (!WON_EDIT) return;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) return;
-  const p = sel.anchorNode && sel.anchorNode.parentElement
-    && sel.anchorNode.parentElement.closest(".wl");
-  const p2 = sel.focusNode && sel.focusNode.parentElement
-    && sel.focusNode.parentElement.closest(".wl");
+  const p = wonPara(sel.anchorNode), p2 = wonPara(sel.focusNode);
   if (!p || p !== p2) { sel.removeAllRanges(); return; }   // 두 줄에 걸치면 안 받는다
 
   const card = p.closest(".ct-card");
@@ -3485,6 +3490,98 @@ function render() {
 }
 window.addEventListener("hashchange", render);
 document.addEventListener("mouseup", e => { if (e.target.closest(".won-body")) wonPick(); });
+
+/* ---------- 아이패드·아이폰에서 빈칸 뚫기 ----------
+   iOS 는 손가락으로 글자를 고를 때 **mouseup 을 보내지 않는다.** 선택 손잡이를 끄는
+   제스처라 마우스 이벤트가 합성되지 않아서, 마우스에만 걸어 둔 위 줄이 안 걸린다.
+   그래서 아이패드에서는 아무리 드래그해도 빈칸이 생기지 않았다.
+
+   선택이 바뀌는 것은 어디서나 selectionchange 로 잡히므로 그것을 쓴다. 다만 자동으로
+   뚫지는 않는다 — 손가락 선택은 손잡이로 몇 번씩 다듬게 되고, 그때마다 빈칸이 생기면
+   못 쓴다. 선택이 멎으면 그 자리에 단추를 띄우고, 누를 때 뚫는다. */
+let WON_SEL_T = 0;
+function wonSelBtn() {
+  let el = document.querySelector(".wonpick");
+  if (!el) {
+    el = document.createElement("button");
+    el.className = "wonpick";
+    el.type = "button";
+    el.textContent = "여기 빈칸으로";
+    /* pointerdown 에서 막아야 선택이 안 풀린다. click 까지 가면 이미 선택이 사라진다 */
+    el.addEventListener("pointerdown", ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      wonPick();
+      wonSelHide();
+    });
+    document.body.appendChild(el);
+  }
+  return el;
+}
+let WON_SEL_RAF = 0, WON_SEL_TICK = 0;
+function wonSelHide() {
+  cancelAnimationFrame(WON_SEL_RAF);
+  clearInterval(WON_SEL_TICK);
+  WON_SEL_RAF = WON_SEL_TICK = 0;
+  const el = document.querySelector(".wonpick");
+  if (el) el.classList.remove("show");
+}
+/* 단추가 떠 있는 동안은 프레임마다 선택 자리를 다시 재서 따라다닌다.
+   scroll 이벤트에 걸면 될 것 같지만, 무엇이 스크롤되느냐가 기기마다 달라서
+   (iOS 는 visualViewport 가 따로 움직인다) 안 오는 경우가 있다. 선택 하나 재는
+   일이라 값이 싸고, '빈칸 정하기'로 글자를 고른 잠깐만 돈다 */
+function wonSelTrack() {
+  cancelAnimationFrame(WON_SEL_RAF);
+  WON_SEL_RAF = requestAnimationFrame(() => {
+    const el = document.querySelector(".wonpick");
+    if (!el || !el.classList.contains("show")) { WON_SEL_RAF = 0; return; }
+    wonSelShow();
+  });
+  /* rAF 는 화면이 가려지면 아예 멎는다(다른 창을 보다 돌아오는 경우). 느슨한
+     타이머를 하나 같이 둬서, 어느 쪽이 멎어도 자리는 따라가게 한다 */
+  if (!WON_SEL_TICK) {
+    WON_SEL_TICK = setInterval(() => {
+      const el = document.querySelector(".wonpick");
+      if (!el || !el.classList.contains("show")) { clearInterval(WON_SEL_TICK); WON_SEL_TICK = 0; return; }
+      wonSelPlace();
+    }, 120);
+  }
+}
+function wonSelShow() {
+  const sel = window.getSelection();
+  if (!WON_EDIT || !sel || sel.isCollapsed || !sel.rangeCount) return wonSelHide();
+  const p = wonPara(sel.anchorNode), p2 = wonPara(sel.focusNode);
+  // 두 줄에 걸친 선택은 어차피 안 받으므로 단추도 띄우지 않는다
+  if (!p || p !== p2 || !p.closest(".won-body")) return wonSelHide();
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  if (!r || (!r.width && !r.height)) return wonSelHide();
+
+  const el = wonSelBtn();
+  el.classList.add("show");
+  wonSelPlace();
+  wonSelTrack();
+}
+/* 선택 자리에 단추를 붙인다. 위가 좁으면 아래에 붙인다 */
+function wonSelPlace() {
+  const el = document.querySelector(".wonpick");
+  const sel = window.getSelection();
+  if (!el || !sel || sel.isCollapsed || !sel.rangeCount) return;
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  if (!r || (!r.width && !r.height)) return;
+  const w = el.offsetWidth || 120, h = el.offsetHeight || 34;
+  const above = r.top - h - 10;
+  el.style.top = (above > 8 ? above : Math.min(r.bottom + 10, innerHeight - h - 8)) + "px";
+  el.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8)) + "px";
+}
+document.addEventListener("selectionchange", () => {
+  clearTimeout(WON_SEL_T);
+  WON_SEL_T = setTimeout(wonSelShow, 300);   // 손잡이를 다듬는 동안은 기다린다
+});
+/* 화면을 옮기거나 확대하면 자리를 다시 잡는다. 프레임 추적이 놓치는 경우의 보험 */
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", wonSelTrack);
+  window.visualViewport.addEventListener("scroll", wonSelTrack);
+}
 document.addEventListener("click", onAppClick);
 // 답안 초안 자동저장 (입력할 때마다)
 document.addEventListener("input", e => {
