@@ -726,6 +726,37 @@ table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-
   cursor: pointer; box-shadow: inset 0 -1px 0 #e0bf5e; }
 .wb:hover { background: #ffd76a; }
 .wskip { color: var(--sub); }
+
+/* 줄 이름표(성취기준 코드·해설·고려·항목 번호)와 문서 안 소제목.
+   ⚠️ 이름표는 반드시 ::before 로만 그린다. 글자를 DOM 에 넣으면 드래그한 자리를 셀 때
+   그 글자까지 세어 빈칸이 밀린다 (wonOffset 이 텍스트 노드를 훑는다) */
+.won-body .wl { position: relative; }
+.won-body .wl[data-lab] { padding-left: 74px; }
+.won-body .wl[data-lab]::before {
+  content: attr(data-lab);
+  position: absolute; left: 0; top: .45em;
+  width: 64px; text-align: right;
+  font-size: .68rem; line-height: 1.4; color: var(--faint);
+  letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.won-body .wl.wh { font-weight: 700; color: var(--ink); margin: 16px 0 4px;
+  padding-left: 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.won-body .wl.wh:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.won-body .wl.wh[data-lab]::before { display: none; }
+@media (max-width: 560px) {
+  .won-body .wl[data-lab] { padding-left: 0; padding-top: 1.5em; }
+  .won-body .wl[data-lab]::before { top: 0; left: 0; width: auto; text-align: left; }
+}
+
+/* 원문이 바뀌어 자리를 못 찾은 빈칸. 기록은 살아 있다는 것을 알려 주는 자리 */
+.wlost { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--warnb);
+  background: var(--warn-bg); border-radius: 8px; }
+.wlost b { font-size: .82rem; color: var(--warn); }
+.wlost p { margin: 4px 0 8px; font-size: .78rem; color: var(--sub); line-height: 1.65; }
+.wlost ul { margin: 0; padding-left: 18px; font-size: .8rem; }
+.wlost li { padding: 2px 0; }
+.wlost-d { color: var(--faint); font-size: .72rem; margin-left: 6px; }
+.wlost-n { color: var(--warn); font-size: .72rem; margin-left: 6px; }
 .ctb.wib { display: inline-flex; vertical-align: baseline; margin: 0 2px; gap: 3px; }
 .ctb.wib .ctin { padding: 2px 6px; font-size: .86rem; }
 .ctb.wib .ctans { flex-basis: auto; margin-left: 4px; }

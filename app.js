@@ -69,7 +69,8 @@ function mergeRemote(remote) {
      다른 기기에서 어제 뚫은 것까지 같이 날아간다. 되살아나면 다시 지우는 쪽이 싸다 */
   if (Array.isArray(remote.won)) {
     const L = (S.won = S.won || []);
-    const key = b => b.q + "|" + b.d + "|" + b.i + "|" + b.s;
+    /* 열쇠는 글자에서 나온다(dk·k). 옛 기기가 보내온 자리 열쇠도 받아 두면 wonMigrate 가 옮긴다 */
+    const key = b => b.k ? (b.q + "|" + b.dk + "|" + b.k) : (b.q + "|" + b.d + "|" + b.i + "|" + b.s);
     const have = new Set(L.map(key));
     for (const b of remote.won) {
       if (!b || typeof b.s !== "number" || have.has(key(b))) continue;
@@ -322,6 +323,9 @@ function todayStr() {
 }
 function addDays(d, n) {
   const t = new Date(d + "T00:00:00");
+  /* 날짜가 없는 기록(옛 백업을 가져왔을 때)이 하나만 섞여도 toISOString 이 던져서
+     홈이 통째로 안 그려진다. 그런 줄은 오늘 것으로 치고 넘어간다 */
+  if (isNaN(t.getTime())) return addDays(todayStr(), n);
   t.setDate(t.getDate() + n);
   const off = t.getTimezoneOffset();
   const loc = new Date(t.getTime() - off * 60 * 1000);
@@ -835,7 +839,9 @@ function rowsHtml(list) {
   return list.map(x => {
     /* 기출 문항은 한 문항에 소문항이 여럿이라 제목만 쓰면 같은 줄이 반복돼 보인다 */
     const base = esc(x.sub.title || x.q.title || "카드");
-    const nm = x.q.subs.length > 1 ? `${base} <span class="sn">${esc(x.sub.no)}</span>` : base;
+    /* 원문 모드의 sub.no 는 글자 해시라 사람이 읽을 것이 못 된다. 보여 줄 번호는 따로 둔다 */
+    const sn = x.sub.sn || x.sub.no;
+    const nm = x.q.subs.length > 1 ? `${base} <span class="sn">${esc(sn)}</span>` : base;
     const v = x.st.last ? x.st.last.r : null;
     return `<div class="mrow">
       <span class="nm">${nm}<span class="tag">${esc(x.quiz.subject)} · ${esc(rangeOf(x.quiz))}</span></span>
@@ -918,16 +924,23 @@ function homeMainHtml() {
     const s = sel.slice(3);
     const ranges = subjectGroups().get(s) || new Map();
     const c = queueCounts(sel);
+    const allWon = [...ranges.values()].every(qs => qs.every(q => q.kind === "won"));
     return `<div class="mhead"><div><h2>${esc(s)}</h2>
-        <p>영역 ${ranges.size} · 카드 ${c.all}장</p></div>
+        <p>${allWon && !c.all
+          ? "과목 " + ranges.size + " · 원문에서 외울 자리를 드래그하면 카드가 돼요"
+          : "영역 " + ranges.size + " · 카드 " + c.all + "장"}</p></div>
         ${c.relearn + c.review ? `<button class="btn primary" data-act="start-scope" data-scope="${esc(sel)}">복습 ${c.relearn + c.review}장</button>` : ""}</div>
       ${[...ranges.entries()].map(([name, quizzes]) => {
         /* 카드 수는 범위 밖 칸을 뺀 실제 수로 센다 (내체표는 과목마다 범주를 고른다) */
         const rc = queueCounts("ar:" + s + "|" + name);
+        /* 원문은 빈칸을 아직 안 뚫었으면 카드가 0장이다. "0장"만 열세 줄 늘어서면
+           자료가 안 들어온 것처럼 보이므로, 그때는 몇 쪽짜리 원문인지를 보여 준다 */
+        const won = !rc.all && quizzes.every(q => q.kind === "won");
+        const pages = won ? quizzes.reduce((a, q) => a + (q.docs ? q.docs.length : 0), 0) : 0;
         return `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
             data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
           <span class="nm">${esc(name)}</span>
-          <span class="cnt">${rc.all}장</span>
+          <span class="cnt">${won ? "원문 " + pages + "쪽" : rc.all + "장"}</span>
           ${rc.weak ? `<span class="bdg warn">다시 ${rc.weak}</span>` : ""}
           ${rc.relearn + rc.review ? `<span class="bdg">${rc.relearn + rc.review}</span>` : ""}
         </button>`;
@@ -1368,6 +1381,215 @@ function ctMove(from, dir) {
 const WON = window.DAJIGI_WON || [];
 let WON_EDIT = false;   // 빈칸 정하기 모드인가
 
+/* ---------- 빈칸의 이름표 (여기가 제일 조심할 자리) ----------
+   빈칸의 열쇠를 "몇 번째 문서 · 몇 번째 줄 · 몇 번째 글자"로 잡으면, 원문 자료를 다시 만들어
+   문단 하나가 늘거나 오탈자 하나가 고쳐지는 순간 그 뒤 빈칸이 전부 한 칸씩 밀린다. 밀리면
+   어제 맞힌 기록이 엉뚱한 자리에 붙고, 자리를 못 찾은 기록은 사라진다. 총론은 고시본이라
+   안 바뀌어서 그냥 뒀지만 성취기준·안내서는 도달점에서 계속 다시 만든다.
+
+   그래서 열쇠를 자리가 아니라 **글자**에서 뽑는다.
+       dk  문서 이름표 — 빌드가 붙여 준 key (없으면 문서 제목의 해시)
+       k   빈칸 이름표 — 줄 해시 : 답 해시 : 그 줄에서 같은 답의 몇 번째
+   줄이 위아래로 밀려도, 문서 차례가 바뀌어도 열쇠는 그대로다. 줄 글자 자체가 고쳐지면
+   답 글자로 다시 찾아 붙이고(재정착), 그것도 안 되면 기록을 지우지 않고 떼어 둔다. */
+
+/* FNV-1a 32비트. build_dodal_won.py 의 fnv 와 같은 값이 나와야 한다 */
+function hash8(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i) & 0xffff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+function wonNorm(x) { return (x || "").replace(/\s+/g, " ").trim(); }
+function wonDocKey(doc) { return doc.key || "t" + hash8(wonNorm(doc.title || "")); }
+
+/* 답이 몇 번째로 나온 것인지 센다.
+   ⚠️ 한 줄 안에서만 세면 모자란다. 글자가 똑같은 줄이 한 문서에 여럿인 자료가 있어서
+   (창체 '2. 영역과 활동'은 같은 꼴의 줄이 열여섯 개다), 줄 안에서만 세면 두 빈칸이
+   같은 열쇠를 받아 기록이 한 곳에 섞인다. 그래서 **같은 글자의 줄들을 하나로 이어 놓고**
+   그 안에서 몇 번째인지 센다. 줄 차례가 밀려도 이 수는 그대로다. */
+function wonOccIn(line, at, ans) {
+  let occ = 0, from = 0, p;
+  while ((p = line.indexOf(ans, from)) >= 0 && p < at) { occ++; from = p + 1; }
+  return occ;
+}
+function wonCountIn(line, ans) {
+  return ans ? wonOccIn(line, line.length + 1, ans) : 0;
+}
+function wonKey(doc, i, a, b) {
+  const line = doc.lines[i] || "";
+  const ans = line.slice(a, b);
+  const lh = hash8(wonNorm(line));
+  let occ = wonOccIn(line, a, ans);
+  for (let j = 0; j < i; j++) {
+    if (hash8(wonNorm(doc.lines[j])) === lh) occ += wonCountIn(doc.lines[j], ans);
+  }
+  return lh + ":" + hash8(wonNorm(ans)) + ":" + occ;
+}
+/* 열쇠가 가리키는 자리를 지금 원문에서 찾는다. 없으면 null */
+function wonFind(doc, lh, ans, nth) {
+  if (!ans) return null;
+  let seen = 0;
+  for (let i = 0; i < doc.lines.length; i++) {
+    const line = doc.lines[i];
+    if (hash8(wonNorm(line)) !== lh) continue;
+    let from = 0, p;
+    while ((p = line.indexOf(ans, from)) >= 0) {
+      if (seen === nth) return { i: i, s: p };
+      seen++;
+      from = p + 1;
+    }
+  }
+  return null;
+}
+function wonSid(quizId, b) { return quizId + "|" + b.dk + "|" + b.k; }
+
+/* 두 줄이 얼마나 닮았나(0~1). 자료가 손질돼 낱말 몇 개가 바뀌었을 때,
+   같은 답이 든 여러 줄 가운데 옛 줄을 고르는 데만 쓴다 */
+function wonSim(a, b) {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  const n = Math.min(a.length, b.length);
+  let head = 0;
+  while (head < n && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < n - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return (head + tail) / Math.max(a.length, b.length);
+}
+
+/* 기록을 옛 열쇠에서 새 열쇠로 옮긴다. 덮어쓰지 않고 합친다 — 양쪽에 쌓여 있을 수 있어서.
+   복습 기록(records)·내 질문(myq)·드릴 통계(qstat)를 같이 데려간다 */
+function wonMoveRecords(from, to) {
+  if (from === to) return 0;
+  let moved = 0;
+  const src = S.records[from];
+  if (src && src.length) {
+    const dst = S.records[to] || (S.records[to] = []);
+    for (const r of src) if (!dst.some(c => c.t === r.t && c.r === r.r)) dst.push(r);
+    dst.sort((x, y) => (x.t || 0) - (y.t || 0));
+    moved = src.length;
+  }
+  delete S.records[from];
+  if (S.myq && S.myq[from]) {
+    const dst = S.myq[to] || (S.myq[to] = []);
+    for (const r of S.myq[from]) if (r && r.q && !dst.some(c => c.q === r.q)) dst.push(r);
+    delete S.myq[from];
+  }
+  if (S.qstat) {
+    for (const k of Object.keys(S.qstat)) {
+      if (k !== from && !k.startsWith(from + "|")) continue;
+      const nk = to + k.slice(from.length);
+      const cur = S.qstat[nk], v = S.qstat[k];
+      S.qstat[nk] = cur
+        ? { w: Math.max(cur.w || 0, v.w || 0), ok: Math.max(cur.ok || 0, v.ok || 0) }
+        : v;
+      delete S.qstat[k];
+    }
+  }
+  return moved;
+}
+
+/* 옛 빈칸(자리로 잡아 둔 것)에 이름표를 달아 준다. 총론 원문에 뚫어 둔 것들이고,
+   다른 기기에서 옛 모양으로 올라온 것도 여기로 들어온다. 기록도 새 열쇠로 옮긴다 */
+function wonMigrate() {
+  let done = 0;
+  for (const b of wonList()) {
+    if (b.k) continue;
+    const set = WON.find(x => x.id === b.q);
+    const doc = set && set.docs.find(d => d.no === b.d);
+    if (!doc || !doc.lines[b.i]) {
+      /* 자료가 사라진 빈칸. 기록은 그대로 두고 떼어 둔 것으로만 표시한다 */
+      b.dk = "d" + b.d;
+      b.k = "lost:" + hash8(String(b.d) + ":" + b.i + ":" + b.s) + ":0";
+      b.o = 1;
+      done++;
+      continue;
+    }
+    const line = doc.lines[b.i];
+    const e = typeof b.e === "number" ? b.e : b.s;
+    b.a = line.slice(b.s, e);
+    b.ln = line.slice(0, 200);
+    b.dt = doc.title;
+    b.dk = wonDocKey(doc);
+    b.k = wonKey(doc, b.i, b.s, e);
+    wonMoveRecords(b.q + "|" + b.d + "|" + b.i + "_" + b.s, wonSid(b.q, b));
+    done++;
+  }
+  return done;
+}
+
+/* 저장된 빈칸을 지금 실린 원문에 다시 붙인다. 자료를 새로 빌드한 뒤에도 기록이 따라오게 하는 자리.
+     1) 줄 해시가 그대로면 그 줄 — 줄 차례가 밀렸어도 바로 찾는다
+     2) 줄 글자가 고쳐졌으면, 답이 든 줄 가운데 옛 줄과 가장 닮은 줄로 옮기고 열쇠를 새로 준다
+     3) 그래도 못 찾으면 떼어 둔다(o:1). **기록은 어떤 경우에도 지우지 않는다** */
+let WON_LOST = 0;
+function wonReanchor() {
+  let changed = wonMigrate() > 0;
+  let moved = 0, lost = 0;
+  for (const b of wonList()) {
+    const set = WON.find(x => x.id === b.q);
+    const doc = set && (set.docs.find(d => wonDocKey(d) === b.dk)
+      || set.docs.find(d => wonNorm(d.title) === wonNorm(b.dt || "\u0000")));
+    if (!doc) {
+      if (!b.o) { b.o = 1; changed = true; }
+      lost++;
+      continue;
+    }
+    const dk = wonDocKey(doc);
+    if (dk !== b.dk) {           // 문서 제목으로 다시 찾은 경우
+      wonMoveRecords(wonSid(b.q, b), b.q + "|" + dk + "|" + b.k);
+      b.dk = dk;
+      changed = true;
+    }
+    const parts = String(b.k).split(":");
+    const lh = parts[0], nth = +(parts[2] || 0);
+    const ans = b.a || "";
+    // 1) 줄 글자가 그대로면 바로 찾는다 (줄 차례가 밀려도 걸린다)
+    let hit = wonFind(doc, lh, ans, nth);
+    // 2) 줄이 손질됐으면 답이 든 줄 가운데 옛 줄과 가장 닮은 줄로 옮긴다
+    if (!hit && ans) {
+      /* 닮은 정도가 이만큼은 돼야 "같은 줄이 손질된 것"으로 본다.
+         이 문턱이 없으면, 원래 줄이 통째로 사라졌을 때 같은 낱말이 든 엉뚱한 줄
+         (예: 성취기준의 낱말을 해설 문장에서)로 빈칸이 옮겨 가 문맥이 뒤바뀐다.
+         못 찾으면 떼어 두기만 한다 — 기록은 어차피 그 열쇠에 그대로 남는다 */
+      let best = -1, score = 0.4;
+      for (let i = 0; i < doc.lines.length; i++) {
+        if (doc.lines[i].indexOf(ans) < 0) continue;
+        if (wonList().some(x => x !== b && !x.o && x.q === b.q && x.dk === b.dk
+          && x.i === i && x.a === ans)) continue;   // 이미 다른 빈칸이 앉은 자리는 비켜 간다
+        const sc = wonSim(wonNorm(doc.lines[i]), wonNorm(b.ln || ans));
+        if (sc > score) { score = sc; best = i; }
+      }
+      if (best >= 0) hit = { i: best, s: doc.lines[best].indexOf(ans) };
+    }
+    if (!hit) {
+      if (!b.o) { b.o = 1; changed = true; }
+      lost++;
+      continue;
+    }
+    const line = doc.lines[hit.i];
+    const nk = wonKey(doc, hit.i, hit.s, hit.s + ans.length);
+    if (nk !== b.k) {
+      wonMoveRecords(wonSid(b.q, b), b.q + "|" + b.dk + "|" + nk);
+      b.k = nk;
+      moved++;
+      changed = true;
+    }
+    if (b.i !== hit.i || b.s !== hit.s) {
+      b.i = hit.i; b.s = hit.s; b.e = hit.s + ans.length;
+      changed = true;
+    }
+    if (b.o) { delete b.o; changed = true; }
+    if (b.ln !== line.slice(0, 200)) { b.ln = line.slice(0, 200); changed = true; }
+    if (b.dt !== doc.title) { b.dt = doc.title; changed = true; }
+  }
+  WON_LOST = lost;
+  if (changed) persist();
+  return { moved: moved, lost: lost };
+}
+
 /* 드래그로 뚫은 자리는 화면이 곧바로 다시 그려져서 무엇이 바뀌었는지 놓치기 쉽다.
    그래서 무엇을 뚫었는지 한 줄로 알려 준다 */
 let TOAST_T = 0;
@@ -1381,35 +1603,41 @@ function toast(msg) {
 }
 
 function wonList() { return (S.won = S.won || []); }
-function wonDoc(set, d) { return set.docs.find(x => x.no === d); }
+function wonDoc(set, dk) { return set.docs.find(x => wonDocKey(x) === dk); }
 
 /* 원문 묶음 → 복습 엔진이 아는 모양. 빈칸 하나가 카드 하나다 */
 function wonBuild() {
+  wonReanchor();
   for (let k = DATA.length - 1; k >= 0; k--) if (DATA[k].kind === "won") DATA.splice(k, 1);
   for (const set of WON) {
-    const mine = wonList().filter(b => b.q === set.id);
+    /* 떼어 둔 빈칸(o)은 카드로 올리지 않는다. 기록은 남아 있고 원문 화면에서 따로 안내한다 */
+    const mine = wonList().filter(b => b.q === set.id && !b.o);
     DATA.push({
       id: set.id, subject: set.subject, range: set.range, title: set.title,
       scope: set.scope, kind: "won", mode: "won", rules: null, docs: set.docs,
       base: "원문에서 드래그한 자리가 빈칸이 된다. 빈칸 하나가 카드 하나",
-      questions: set.docs.map(doc => ({
-        no: doc.no, title: doc.title, points: 0, body: "",
-        frame: set.subject + " 원문 · " + doc.title,
-        subs: mine.filter(b => b.d === doc.no)
-          .sort((a, b) => a.i - b.i || a.s - b.s)
-          .map(b => {
-            const line = doc.lines[b.i] || "";
-            const ans = line.slice(b.s, b.e);
-            return {
-              no: b.i + "_" + b.s, type: "term", hideHead: true, points: 0,
-              /* 오늘의 복습에서 한 장씩 나올 때는 그 조항을 통째로 보여 주고
-                 뚫은 자리만 밑줄로 남긴다. 앞뒤 문맥이 곧 단서다 */
-              prompt: line.slice(0, b.s) + "＿＿＿＿" + line.slice(b.e),
-              answer: ans, parts: [{ label: "원문", accept: [ans] }],
-              won: b
-            };
-          })
-      }))
+      questions: set.docs.map(doc => {
+        const dk = wonDocKey(doc);
+        return {
+          /* 문항 번호가 곧 기록 열쇠의 가운데 토막이다. 자리(doc.no)가 아니라 이름표를 쓴다 */
+          no: dk, dno: doc.no, title: doc.title, points: 0, body: "",
+          frame: set.subject + " 원문 · " + doc.title,
+          subs: mine.filter(b => b.dk === dk)
+            .sort((a, b) => a.i - b.i || a.s - b.s)
+            .map((b, bi) => {
+              const line = doc.lines[b.i] || "";
+              const ans = line.slice(b.s, b.e);
+              return {
+                no: b.k, sn: String(bi + 1), type: "term", hideHead: true, points: 0,
+                /* 오늘의 복습에서 한 장씩 나올 때는 그 조항을 통째로 보여 주고
+                   뚫은 자리만 밑줄로 남긴다. 앞뒤 문맥이 곧 단서다 */
+                prompt: line.slice(0, b.s) + "＿＿＿＿" + line.slice(b.e),
+                answer: ans, parts: [{ label: "원문", accept: [ans] }],
+                won: b
+              };
+            })
+        };
+      })
     });
   }
 }
@@ -1438,8 +1666,9 @@ function wonPick() {
 
   const card = p.closest(".ct-card");
   const quiz = DATA.find(z => z.id === card.dataset.won);
-  const d = +card.dataset.d, i = +p.dataset.i;
-  const line = wonDoc(quiz, d).lines[i] || "";
+  const dk = card.dataset.dk, i = +p.dataset.i;
+  const doc = wonDoc(quiz, dk);
+  const line = doc.lines[i] || "";
 
   let a = wonOffset(p, sel.anchorNode, sel.anchorOffset);
   let b = wonOffset(p, sel.focusNode, sel.focusOffset);
@@ -1451,44 +1680,59 @@ function wonPick() {
   sel.removeAllRanges();
   if (b - a < 1) return;
 
-  const mine = wonList().filter(x => x.q === quiz.id && x.d === d && x.i === i);
+  const mine = wonList().filter(x => x.q === quiz.id && x.dk === dk && x.i === i && !x.o);
   if (mine.some(x => a < x.e && x.s < b)) { toast("이미 뚫은 자리와 겹쳐요"); return; }
 
-  wonList().push({ q: quiz.id, d: d, i: i, s: a, e: b });
+  const nb = {
+    q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
+    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
+  };
+  /* 떼어 둔 같은 자리가 있으면 그것을 되살린다(기록이 이미 그 열쇠에 붙어 있다) */
+  const L = wonList();
+  const back = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
+  if (back >= 0) L.splice(back, 1);
+  L.push(nb);
   persist();
   wonBuild();
   renderQuiz(quiz.id, false);
-  toast("빈칸 추가: " + line.slice(a, b));
+  /* 열쇠가 글자에서 나오므로, 지웠다 다시 뚫은 자리는 지난 기록이 그대로 이어진다 */
+  const back2 = history(wonSid(quiz.id, nb)).length;
+  toast("빈칸 추가: " + nb.a + (back2 ? " (지난 기록 " + back2 + "건 이어받음)" : ""));
 }
 
 function wonDrop(card, i, s) {
   const quiz = DATA.find(z => z.id === card.dataset.won);
-  const d = +card.dataset.d;
+  const dk = card.dataset.dk;
   const L = wonList();
-  const k = L.findIndex(x => x.q === quiz.id && x.d === d && x.i === i && x.s === s);
+  const k = L.findIndex(x => x.q === quiz.id && x.dk === dk && x.i === i && x.s === s && !x.o);
   if (k < 0) return;
-  /* 기록도 같이 지운다. 안 지우면 다시 같은 자리를 뚫었을 때
-     옛 판정이 되살아나 "맞힌 적 있는 카드"로 둔갑한다 */
-  const sub = { no: i + "_" + s };
-  delete S.records[subId(quiz, { no: d }, sub)];
+  /* ⭐ 기록은 지우지 않는다. 외울 범위는 공부하면서 계속 손보게 되는데, 뺄 때마다 기록을
+     지우면 예전에 맞히고 틀린 내역이 그때그때 날아간다. 열쇠가 글자에서 나오므로
+     같은 자리를 다시 뚫으면 그 기록이 그대로 이어진다 */
+  const n = history(wonSid(quiz.id, L[k])).length;
   L.splice(k, 1);
   persist();
   wonBuild();
   renderQuiz(quiz.id, false);
+  toast(n ? "빈칸을 뺐어요. 기록 " + n + "건은 남겨 둡니다" : "빈칸을 뺐어요");
 }
 
 /* 줄 하나를 그린다. 빈칸은 정하기 모드면 표시, 풀기 모드면 입력칸 */
 function wonLineHtml(quiz, doc, i, blanks, pred) {
   const line = doc.lines[i] || "";
+  /* 이름표(성취기준 코드·해설·고려)와 소제목. ⚠️ 이름표는 CSS ::before 로 그린다 —
+     글자를 <span> 으로 넣으면 드래그 자리를 셀 때 그 글자까지 세어 빈칸이 밀린다 */
+  const m = (doc.meta && doc.meta[i]) || null;
+  const cls = "wl" + (m && m.h ? " wh" : "");
+  const lab = m && m.l ? ` data-lab="${esc(m.l)}"` : "";
   const mine = blanks.filter(b => b.i === i).sort((a, b) => a.s - b.s);
-  if (!mine.length) return `<p class="wl" data-i="${i}">${esc(line)}</p>`;
+  if (!mine.length) return `<p class="${cls}" data-i="${i}"${lab}>${esc(line)}</p>`;
 
   let out = "", at = 0;
   for (const b of mine) {
     out += esc(line.slice(at, b.s));
     const ans = line.slice(b.s, b.e);
-    const sub = { no: i + "_" + b.s };
-    const id = subId(quiz, { no: doc.no }, sub);
+    const id = wonSid(quiz.id, b);
     if (WON_EDIT) {
       out += `<mark class="wb" data-act="won-drop" data-i="${i}" data-s="${b.s}"
         title="누르면 빈칸을 없애요">${esc(ans)}</mark>`;
@@ -1506,19 +1750,18 @@ function wonLineHtml(quiz, doc, i, blanks, pred) {
     at = b.e;
   }
   out += esc(line.slice(at));
-  return `<p class="wl" data-i="${i}">${out}</p>`;
+  return `<p class="${cls}" data-i="${i}"${lab}>${out}</p>`;
 }
 
 function wonCardHtml(quiz, doc, qi, pred) {
-  const blanks = wonList().filter(b => b.q === quiz.id && b.d === doc.no);
-  const shown = pred
-    ? blanks.filter(b => pred(subId(quiz, { no: doc.no }, { no: b.i + "_" + b.s })))
-    : blanks;
+  const dk = wonDocKey(doc);
+  const blanks = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
+  const shown = pred ? blanks.filter(b => pred(wonSid(quiz.id, b))) : blanks;
   if (pred && !shown.length) return "";
   const body = doc.lines.map((_, i) => wonLineHtml(quiz, doc, i, blanks, pred)).join("");
   return `
     <section class="q-card ct-card won-card" data-qi="${qi}" data-won="${esc(quiz.id)}"
-      data-d="${doc.no}">
+      data-dk="${esc(dk)}">
       <div class="q-head"><span class="qno">${esc(doc.title)}</span>
         <span class="qpts">빈칸 ${blanks.length}</span></div>
       <div class="won-body">${body}</div>
@@ -1531,7 +1774,10 @@ function wonCardHtml(quiz, doc, qi, pred) {
 }
 
 function wonHtml(quiz, weakOnly, pred) {
-  const n = wonList().filter(b => b.q === quiz.id).length;
+  const all = wonList().filter(b => b.q === quiz.id);
+  const n = all.filter(b => !b.o).length;
+  /* 원문이 바뀌어 자리를 못 찾은 빈칸. 기록은 그대로 있으니 버리지 말고 알려만 준다 */
+  const lost = all.filter(b => b.o);
   const filter = (weakOnly || pred)
     ? (id => (!weakOnly || isWeak(id)) && (!pred || pred(id)))
     : null;
@@ -1541,8 +1787,17 @@ function wonHtml(quiz, weakOnly, pred) {
         <span>원문에서 외울 자리를 드래그하면 빈칸이 돼요. 뚫은 자리 ${n}곳</span></div>
       <div class="cs-row">
         <button class="ck" data-act="won-edit" aria-pressed="${WON_EDIT}">빈칸 정하기</button>
-        ${WON_EDIT && n ? `<button class="ck danger" data-act="won-clear">이 원문 빈칸 모두 지우기</button>` : ""}
+        ${WON_EDIT && n ? `<button class="ck danger" data-act="won-clear">이 원문 빈칸 모두 빼기</button>` : ""}
       </div>
+      ${lost.length ? `<div class="wlost">
+        <b>자리를 못 찾은 빈칸 ${lost.length}곳</b>
+        <p>원문 자료가 바뀌어 이 낱말이 지금 글에 없어요. 복습 기록은 지우지 않고 두었어요.
+           같은 낱말을 다시 드래그하면 그 기록이 이어집니다.</p>
+        <ul>${lost.slice(0, 12).map(b => `<li>${esc(b.a || "?")}
+          <span class="wlost-d">${esc(b.dt || "")}</span>
+          <span class="wlost-n">기록 ${history(wonSid(quiz.id, b)).length}건</span></li>`).join("")}
+          ${lost.length > 12 ? `<li>그 밖에 ${lost.length - 12}곳</li>` : ""}</ul>
+      </div>` : ""}
     </div>`;
   const cards = quiz.questions.map((q, qi) => {
     const doc = wonDoc(quiz, q.no);
@@ -2728,9 +2983,8 @@ function onAppClick(e) {
   if (act === "won-clear") {
     const id = decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]);
     const quiz = DATA.find(z => z.id === id);
-    if (!quiz || !confirm("이 원문에서 뚫은 빈칸을 모두 지울까요? 그 칸의 복습 기록도 함께 지워져요.")) return;
-    for (const b of wonList().filter(x => x.q === id))
-      delete S.records[subId(quiz, { no: b.d }, { no: b.i + "_" + b.s })];
+    if (!quiz || !confirm("이 원문에서 뚫은 빈칸을 모두 뺄까요? 복습 기록은 지우지 않고 남겨 둡니다.")) return;
+    /* 기록은 남긴다. 같은 자리를 다시 뚫으면 그대로 이어진다 (wonDrop 과 같은 이유) */
     S.won = wonList().filter(x => x.q !== id);
     persist();
     wonBuild();
