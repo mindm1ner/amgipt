@@ -274,7 +274,8 @@ for (const set of (window.DAJIGI_SGI || [])) {
       body: "",
       frame: `성취기준 → 내용 요소 · ${q.gr} · ${q.area}`,
       subs: q.subs.map(s => ({
-        no: s.no, type: "term", hideHead: true, points: 1,
+        /* no 는 기록 열쇠라 내용 요소까지 붙어 길다. 목록에 보일 이름은 범주만 */
+        no: s.no, sn: s.cat, type: "term", hideHead: true, points: 1,
         prompt: s.ask,
         answer: s.a,
         parts: [{ label: "내용 요소", accept: [s.a] }],
@@ -306,6 +307,24 @@ function persist() { localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(
     merged.sort((a, b) => (a.t || 0) - (b.t || 0));
     S.records[nk] = merged;
     delete S.records[key];
+    changed = true;
+  }
+  if (changed) persist();
+})();
+
+/* 마이그레이션: 미술 성취기준형은 한 성취기준의 한 범주에 내용 요소가 둘인 경우가 있다
+   (4미01-03·6미02-03 지식⋅이해). 미술 교육과정 보충자료 대조표를 넣으면서 알았다.
+   범주만으로는 칸을 못 가르므로 칸 번호에 내용 요소를 붙였고, 그 전에 쌓인 기록은
+   그때 실려 있던 쪽으로 옮긴다 (한 번만 돈다) */
+(function migrateSgiSubIds() {
+  const MOVE = {
+    "sgi-2022-미술|4미01-03|지식⋅이해": "sgi-2022-미술|4미01-03|지식⋅이해|대상의 특징",
+    "sgi-2022-미술|6미02-03|지식⋅이해": "sgi-2022-미술|6미02-03|지식⋅이해|조형 요소와 원리의 관계"
+  };
+  let changed = false;
+  for (const [from, to] of Object.entries(MOVE)) {
+    if (!S.records[from]) continue;
+    wonMoveRecords(from, to);      // 기록·내 질문·드릴 통계를 같이 데려간다
     changed = true;
   }
   if (changed) persist();
