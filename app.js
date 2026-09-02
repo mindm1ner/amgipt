@@ -1650,6 +1650,27 @@ function toast(msg) {
   TOAST_T = setTimeout(() => el.classList.remove("show"), 1800);
 }
 
+/* 빈칸을 하나 뚫거나 뺄 때마다 화면을 다시 그리는데, renderQuiz 는 늘 맨 위로 올린다.
+   긴 원문에서 한 곳 뚫을 때마다 첫 줄로 튀면 이어서 뚫을 수가 없다. 그래서 보고 있던
+   카드가 화면 어디에 있었는지를 재어 두었다가, 다시 그린 뒤 그 자리로 되돌린다.
+
+   절대 좌표(scrollY)가 아니라 **카드의 화면 위치**를 기준으로 잡는다. 빈칸이 하나 생기면
+   글자가 입력칸으로 바뀌면서 줄바꿈이 달라져 위쪽 높이가 조금씩 변하기 때문이다. */
+function wonKeepPlace(card) {
+  if (!card) {
+    card = [...document.querySelectorAll(".won-card")]
+      .find(el => el.getBoundingClientRect().bottom > 0) || null;
+  }
+  if (!card) return () => {};
+  const dk = card.dataset.dk || "";
+  const top = card.getBoundingClientRect().top;
+  return () => {
+    const el = document.querySelector('.won-card[data-dk="' + dk.replace(/"/g, '\\"') + '"]');
+    if (!el) return;
+    window.scrollBy(0, el.getBoundingClientRect().top - top);
+  };
+}
+
 function wonList() { return (S.won = S.won || []); }
 function wonDoc(set, dk) { return set.docs.find(x => wonDocKey(x) === dk); }
 
@@ -1737,15 +1758,17 @@ function wonPick() {
   };
   /* 떼어 둔 같은 자리가 있으면 그것을 되살린다(기록이 이미 그 열쇠에 붙어 있다) */
   const L = wonList();
-  const back = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
-  if (back >= 0) L.splice(back, 1);
+  const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
+  if (off >= 0) L.splice(off, 1);
   L.push(nb);
   persist();
   wonBuild();
+  const keepPlace = wonKeepPlace(card);
   renderQuiz(quiz.id, false);
+  keepPlace();
   /* 열쇠가 글자에서 나오므로, 지웠다 다시 뚫은 자리는 지난 기록이 그대로 이어진다 */
-  const back2 = history(wonSid(quiz.id, nb)).length;
-  toast("빈칸 추가: " + nb.a + (back2 ? " (지난 기록 " + back2 + "건 이어받음)" : ""));
+  const kept = history(wonSid(quiz.id, nb)).length;
+  toast("빈칸 추가: " + nb.a + (kept ? " (지난 기록 " + kept + "건 이어받음)" : ""));
 }
 
 function wonDrop(card, i, s) {
@@ -1761,7 +1784,9 @@ function wonDrop(card, i, s) {
   L.splice(k, 1);
   persist();
   wonBuild();
+  const keepPlace = wonKeepPlace(card);
   renderQuiz(quiz.id, false);
+  keepPlace();
   toast(n ? "빈칸을 뺐어요. 기록 " + n + "건은 남겨 둡니다" : "빈칸을 뺐어요");
 }
 
@@ -3052,7 +3077,9 @@ function onAppClick(e) {
   if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
   if (act === "won-edit") {
     WON_EDIT = !WON_EDIT;
+    const keepPlace = wonKeepPlace(null);
     renderQuiz(decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]), false);
+    keepPlace();
     return;
   }
   if (act === "won-drop") { wonDrop(btn.closest(".ct-card"), +btn.dataset.i, +btn.dataset.s); return; }
