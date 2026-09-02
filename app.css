@@ -582,11 +582,6 @@ details.ctx .q-body { overflow-x: auto; }
 .cp.cO { background: var(--ok-bg); color: var(--ok); }
 .cp.cT { background: var(--warn-bg); color: var(--warn); }
 .cp.cX { background: var(--no-bg); color: var(--no); }
-.cp-mastery { margin: 22px auto 0; max-width: 380px; }
-.cp-lbl { font-size: .78rem; color: var(--faint); margin-bottom: 6px; }
-.mastery-bar { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; }
-.mastery-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .5s; }
-.cp-pct { font-size: 1.4rem; font-weight: 800; margin-top: 8px; color: var(--ink); }
 .cp-goal { font-size: .86rem; color: var(--sub); margin-top: 16px; }
 .cp-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
 

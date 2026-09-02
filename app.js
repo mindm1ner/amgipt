@@ -27,11 +27,19 @@ function makeSyncKey() {
   localStorage.setItem(SYNC_KEY_NAME, k);
   return k;
 }
+/* ⚠️ keepalive 는 창을 닫는 순간에도 요청을 끝까지 보내 주지만, 크롬은 keepalive 요청의
+   본문을 **64KB** 로 막는다. 기록이 그만큼 쌓이면 백업이 통째로 "Failed to fetch" 로
+   죽는데, 화면에는 작은 글씨 한 줄만 바뀌어서 알아채기가 어렵다
+   (2026-09-02, 76KB 에서 확인 — 그동안 올라간 줄 알았던 기록이 브라우저에만 있었다).
+   그래서 작을 때만 켠다. 큰 것은 평범한 요청으로 보낸다 */
+const KEEPALIVE_MAX = 60 * 1024;
 async function syncCall(body) {
+  const text = JSON.stringify(body);
+  const size = new TextEncoder().encode(text).length;
   const res = await fetch(SYNC_URL, {
-    method: "POST", keepalive: true,
+    method: "POST", keepalive: size < KEEPALIVE_MAX,
     headers: { "content-type": "application/json", apikey: AI_FN_KEY, Authorization: "Bearer " + AI_FN_KEY },
-    body: JSON.stringify(body)
+    body: text
   });
   if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
@@ -2574,9 +2582,8 @@ function renderCheckpoint(finished) {
     try { doExport(); autoBackedUp = true; } catch { /* 무시 */ }
   }
   const r = SESSION.results;
-  const subs = allSubs();
-  const mastered = subs.filter(x => { const l = latest(x.id); return l && l.r === "O"; }).length;
-  const pct = subs.length ? Math.round(mastered / subs.length * 100) : 0;
+  /* 전체 마스터리 비율은 뺐다. 분모가 앱에 실린 카드 전부(내체표·원문·성취기준형까지
+     수천 장)라 무엇을 해도 한 자릿수에 머무른다. 오늘 한 만큼을 가리는 숫자였다 */
   const left = SESSION.queue.length - SESSION.idx;
   const done = goalToday();
   const wrongN = SESSION.wrong ? SESSION.wrong.size : 0;
@@ -2587,11 +2594,6 @@ function renderCheckpoint(finished) {
         <span class="cp cO">완벽 ${r.O}</span>
         <span class="cp cT">부분 ${r.T}</span>
         <span class="cp cX">몰랐다 ${r.X}</span>
-      </div>
-      <div class="cp-mastery">
-        <div class="cp-lbl">전체 마스터리 (최근 판정이 완벽인 비율)</div>
-        <div class="mastery-bar"><div class="mastery-fill" style="width:${pct}%"></div></div>
-        <div class="cp-pct">${pct}%</div>
       </div>
       <p class="cp-goal">${done >= 10
         ? `오늘의 미니 골 달성 · 스트릭 ${S.streakDays || 1}일`
@@ -2832,7 +2834,9 @@ function onAppClick(e) {
   if (act === "start-session" || act === "start-chronic" || act === "start-scope") {
     const scope = act === "start-scope" ? (btn.dataset.scope || null) : null;
     const mode = act === "start-chronic" ? "chronic" : (btn.dataset.mode || "today");
-    startSession(mode, scope);
+    /* 큐가 비면 startSession 이 false 만 돌려주고 화면은 그대로다. 눌러도 아무 일이
+       없으면 고장으로 보이므로 왜 안 열리는지는 말해 준다 */
+    if (!startSession(mode, scope)) toast("지금 여기서 풀 카드가 없어요");
     return;
   }
   if (act === "retry-wrong") {
@@ -3239,9 +3243,13 @@ function onAppClick(e) {
     if (btn.dataset.single) {
       const z = DATA.find(d => d.id === btn.dataset.single);
       /* 내용 체계표는 표를 통째로 보고 빈칸을 채우는 화면으로 간다.
-         한 장씩 넘기면 표에서 어느 칸이었는지가 사라진다 */
-      if (z && z.kind === "ct") { location.hash = "#q/" + z.id; return; }
-      startSession("all", "qz:" + btn.dataset.single);
+         한 장씩 넘기면 표에서 어느 칸이었는지가 사라진다.
+         원문도 같다 — 게다가 아직 아무 데도 안 뚫었으면 카드가 0장이라
+         세션을 열려 해 봐야 조용히 아무 일도 안 일어난다 (성취기준·안내서가 그랬다) */
+      if (z && (z.kind === "ct" || z.kind === "won")) { location.hash = "#q/" + z.id; return; }
+      if (!startSession("all", "qz:" + btn.dataset.single)) {
+        toast("이 범위에는 아직 풀 카드가 없어요");
+      }
       return;
     }
     openRangeSheet(btn.dataset.range);
