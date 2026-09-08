@@ -928,15 +928,15 @@ function ctLogSubjects() {
   const out = [];
   for (const quiz of DATA) {
     if (quiz.kind !== "ct") continue;
-    let n = 0, hot = 0;
+    let n = 0, deep = 0;
     for (const q of quiz.questions) for (const s of q.subs) {
-      const { w, lv } = ctHeat(subId(quiz, q, s));
+      const { w } = ctHeat(subId(quiz, q, s));
       if (w) n++;
-      if (lv) hot++;
+      if (w > 1) deep++;      // 두 번 이상 틀린 칸. 어느 표부터 볼지 가르는 값
     }
-    if (n) out.push({ quiz, n, hot });
+    if (n) out.push({ quiz, n, deep });
   }
-  return out.sort((a, b) => b.hot - a.hot || b.n - a.n);
+  return out.sort((a, b) => b.deep - a.deep || b.n - a.n);
 }
 
 function homeMainHtml() {
@@ -972,7 +972,7 @@ function homeMainHtml() {
             <span>틀린 자리에 형광펜이 쌓여요</span></div>
           <div class="cs-row">${cts.map(c => `<button class="ck" data-act="home-go"
             data-sel="ctmap:${esc(c.quiz.id)}">${esc(c.quiz.range || c.quiz.title)}${
-            c.hot ? `<span class="n hot">${c.hot}</span>` : `<span class="n">자국 ${c.n}</span>`}</button>`).join("")}</div>
+            c.deep ? `<span class="n hot">${c.n}</span>` : `<span class="n">${c.n}</span>`}</button>`).join("")}</div>
         </div>`;
       })()}
       ${log.length ? log.map(([d, o]) => {
@@ -1329,13 +1329,14 @@ function ctTableHtml(quiz, q, qi) {
    ⚠️ 여기서 AI를 다시 부르지 않는다. 볼 때마다 진단이 달라지면 "같은 답이면 언제나 같은 판정"이
    깨진다. 저장된 진단을 꺼내 보여주기만 한다 (그래서 비용 0, 오프라인에서도 열린다). */
 
-/* 칠할지 말지 = 지금도 약점인가, 얼마나 진할지 = 누적 오답 수.
-   누적 하나로만 칠하면 오래 푼 칸이 무조건 진해져서 "많이 푼 표"가 "약한 표"로 읽힌다.
-   이미 맞히고 있는 칸은 색을 빼고 자국만 남긴다 */
+/* 진하기 = 틀린 횟수, 그것뿐이다.
+   전에는 "지금도 약점인가"(isWeak)로 한 번 거르고 색을 칠했다. 그래서 세 번 틀린 칸도
+   마지막에 맞히면 색이 빠지고 왼쪽 자국만 남아, 표를 훑을 때 **많이 틀린 자리가 안 보였다.**
+   여러 번 틀렸다는 사실은 최근에 한 번 맞혔다고 없어지지 않는다. 그대로 진하게 둔다 */
 function ctHeat(id) {
   const h = history(id);
   const w = h.filter(r => r.r !== "O").length;
-  return { w, tried: h.length > 0, lv: (w && isWeak(id)) ? Math.min(w, 3) : 0 };
+  return { w, tried: h.length > 0, lv: Math.min(w, 3) };
 }
 /* 칸 번호 -> 영역. ctCardCtx 와 같은 표지만 저쪽은 주소창을 읽어서 쓸 수 없다 */
 function ctAreaMap(q) {
@@ -1354,19 +1355,17 @@ function gwa(s) {
 function ctHeatTableHtml(quiz, q, qi) {
   const byNo = new Map(q.subs.map(s => [s.no, s]));
   const cats = ctCats(quiz);
-  let wrongN = 0, hotN = 0;
+  let wrongN = 0;
   const cell = (no, narrow) => {
     const s = byNo.get(no);
     if (!s) return "";
     if (!cats.has(s.ct.cat)) return `<div class="ctoff">${esc(s.answer)}</div>`;
     const id = subId(quiz, q, s);
     const { w, tried, lv } = ctHeat(id);
-    if (lv) hotN++;
     if (w) wrongN++;
-    const cls = lv ? " h" + lv : w ? " healed" : tried ? "" : " fresh";
+    const cls = lv ? " h" + lv : tried ? "" : " fresh";
     /* 횟수는 상시 표시. hover 툴팁은 폰에 없어서 그것만 믿으면 모바일에서 안 보인다 */
-    const tip = !tried ? "아직 안 푼 칸" : !w ? "틀린 적 없어요"
-      : `${w}번 틀렸어요${lv ? "" : " (지금은 맞히는 중)"}`;
+    const tip = !tried ? "아직 안 푼 칸" : !w ? "틀린 적 없어요" : `${w}번 틀렸어요`;
     return `<button type="button" class="hcell${cls}" data-act="heat-cell"
       data-sid="${esc(id)}" data-no="${esc(no)}" title="${esc(tip)}">${esc(s.answer)}${
       w ? `<span class="hn">${w}</span>` : ""}</button>`;
@@ -1388,7 +1387,7 @@ function ctHeatTableHtml(quiz, q, qi) {
   /* data-quiz: 기록 탭 안에서도 열리므로 주소창(#q/...)을 못 믿는다. 표가 제 묶음을 들고 있게 한다 */
   return `<section class="q-card ct-heat" data-qi="${qi}" data-quiz="${esc(quiz.id)}">
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
-        <span class="qpts">${hotN ? `붉은 칸 ${hotN}` : wrongN ? `자국 ${wrongN}` : "깨끗"}</span></div>
+        <span class="qpts">${wrongN ? `틀린 칸 ${wrongN}` : "깨끗"}</span></div>
       ${body}</section>`;
 }
 
@@ -1396,7 +1395,7 @@ function ctHeatHtml(quiz) {
   return `<div class="heat-lgd">
       <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>
       <span><i class="h3"></i>3번 이상 틀린 칸</span>
-      <span class="hl-note">지금 맞히는 칸은 색을 뺐어요. 칸을 누르면 그때 쓴 답이 나와요</span>
+      <span class="hl-note">칸을 누르면 그때 쓴 답이 나와요</span>
     </div>${quiz.questions.map((q, qi) => ctHeatTableHtml(quiz, q, qi)).join("")}`;
 }
 

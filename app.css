@@ -881,8 +881,6 @@ table.ctt-sinche th .ctin { min-width: 54px; }
 .hcell.h2 { background: rgba(var(--heat), .22); }
 .hcell.h3 { background: rgba(var(--heat), .36); border-bottom-color: var(--no); }
 .hcell.h1:hover, .hcell.h2:hover, .hcell.h3:hover { filter: brightness(.97); }
-/* 틀린 적은 있으나 지금은 맞히는 칸: 색을 빼고 왼쪽에 자국만 남긴다 */
-.hcell.healed { color: var(--sub); box-shadow: inset 2px 0 0 var(--nob); }
 .hcell.fresh { color: var(--faint); }
 .hcell .hn { font-size: .66rem; font-weight: 700; color: var(--no); margin-left: 5px;
   background: var(--card); border-radius: 999px; padding: 0 5px; vertical-align: 1px; }
