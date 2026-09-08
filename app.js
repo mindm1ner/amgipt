@@ -2291,9 +2291,16 @@ async function ctDiagnose(card) {
   }
 }
 
+/* ⭐ 이 칸의 판정이 **어느 카드에 적히는가**.
+   카드의 열쇠는 자리가 아니라 답이다(칸 번호가 답 글자에 잠겨 있다). 묶음 안에서는
+   순서를 바꿔 써도 맞다고 인정하는데, 기록까지 자리에 붙이면 어긋난다 —
+   '맨손체조' 칸에 '산책'을 써서 맞혔는데 맨손체조가 맞은 것으로, 산책은 모르는 것으로
+   남는다. 채점이 자리를 다시 나눌 때 rsid(그 답을 가진 칸의 열쇠)를 찍어 둔다. */
+function ctSid(b) { return (b && b.dataset.rsid) || (b && b.dataset.sid); }
+
 /* 오답 유형을 기록에 남긴다. 이 기록이 오답 노트이자, 나중에 "자주 틀리는 칸만 빈칸" 의 재료다 */
 function ctSaveErr(w, err, r) {
-  record(w.b.dataset.sid, r || "X", null, r === "O" ? null : [w.eff || w.sub.answer], "", err, w.val);
+  record(ctSid(w.b), r || "X", null, r === "O" ? null : [w.eff || w.sub.answer], "", err, w.val);
 }
 
 /* ---------- 맥락형 오답 유형 진단 ----------
@@ -3352,6 +3359,7 @@ function onAppClick(e) {
        쓰면 하나만 인정). 묶음 열쇠가 없는 것(원문 모드)은 혼자 두어 자기 답만 본다 */
     const hitSet = new Set();
     const eff = new Map();      // 빈칸 → 이 칸이 실제로 책임질 정답
+    const owner = new Map();    // 빈칸 → 그 정답을 가진 칸 (판정이 적힐 카드)
     const gctx = ctCardCtx(card);
     if (!reveal) {
       const groups = new Map();
@@ -3361,6 +3369,12 @@ function onAppClick(e) {
         groups.get(key).push(b);
       });
       for (const list of groups.values()) {
+        const byAns = new Map();   // 이 묶음에서 답 글자 → 그 답을 가진 칸(들)
+        for (const b of list) {
+          const k = norm(b.dataset.ans);
+          if (!byAns.has(k)) byAns.set(k, []);
+          byAns.get(k).push(b);
+        }
         const left = [];   // 아직 못 맞춘 빈칸
         const pool = [];   // 아직 아무도 안 쓴 정답 (원문 그대로)
         for (const b of list) {
@@ -3388,6 +3402,19 @@ function onAppClick(e) {
           eff.set(it.b, pool[k]);
           pool.splice(k, 1);
         }
+
+        /* 판정을 **그 답을 가진 칸**의 열쇠로 옮긴다. eff 가 곧 이 칸이 책임진 답이니
+           그 답의 임자를 찾아 준다. 제 답을 그대로 맞힌 칸이 먼저 자기를 집는다 */
+        const taken = new Set();
+        const claim = (b) => {
+          const a = eff.get(b);
+          if (!a) return;                       // 짝지을 답이 없으면 제 자리에 적는다
+          const pick = (byAns.get(norm(a)) || []).find(x => !taken.has(x));
+          if (pick) { taken.add(pick); owner.set(b, pick); }
+        };
+        const mine = (b) => eff.get(b) && norm(eff.get(b)) === norm(b.dataset.ans);
+        list.filter(mine).forEach(claim);
+        list.filter(b => !mine(b)).forEach(claim);
       }
     }
     card.querySelectorAll(".ctb").forEach(b => {
@@ -3395,6 +3422,9 @@ function onAppClick(e) {
       /* 이 칸이 책임질 정답. 묶음 안에서 자리를 다시 나눈 결과다 (없으면 원래 정답) */
       const ans = eff.get(b) || b.dataset.ans;
       b.dataset.eff = ans;
+      /* 이 칸의 판정이 적힐 카드. 자리를 안 바꿨으면 저 자신이다 */
+      const tgt = owner.get(b) || b;
+      if (tgt === b) delete b.dataset.rsid; else b.dataset.rsid = tgt.dataset.sid;
       const hit = hitSet.has(b);
       all++;
       if (hit) ok++;
@@ -3406,7 +3436,7 @@ function onAppClick(e) {
       inp.readOnly = true;
       /* 자동 판정은 제안이다. 합산·저장은 고정 코드가 하고, 칸을 눌러 바꿀 수 있다 */
       if (!reveal) {
-        record(b.dataset.sid, hit ? "O" : "X", hit ? "O" : "X", hit ? null : [ans], "", null, inp.value);
+        record(ctSid(b), hit ? "O" : "X", hit ? "O" : "X", hit ? null : [ans], "", null, inp.value);
         bumpGoal();   // 빈칸 하나가 카드 하나이므로 칸마다 센다
       }
     });
@@ -3455,7 +3485,7 @@ function onAppClick(e) {
     b.classList.toggle("miss", next !== "O");
     const ans = b.dataset.eff || b.dataset.ans;   // 묶음 안에서 다시 나눈 정답
     if (next !== "O") b.querySelector(".ctans").textContent = ans;
-    record(b.dataset.sid, next === "△" ? "T" : next, null, next === "O" ? null : [ans], "",
+    record(ctSid(b), next === "△" ? "T" : next, null, next === "O" ? null : [ans], "",
       null, (b.querySelector(".ctin") || {}).value);
     persist(); schedulePush();
     const card = b.closest(".ct-card");
