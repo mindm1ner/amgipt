@@ -732,6 +732,20 @@ table.ctt-sinche th .ctin { min-width: 54px; }
 .ck:hover { border-color: var(--sub); }
 .ck[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .ck .n { font-variant-numeric: tabular-nums; opacity: .7; font-weight: 400; }
+/* 두 번째 줄(얼마나 틀린 것만). 첫 줄과 붙어 보이면 어느 칩이 어느 물음의 답인지 헷갈린다 */
+.cs-head2 { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cs-none { font-size: .74rem; color: var(--no); margin-top: 9px; }
+.ct-none { font-size: .82rem; color: var(--sub); margin-top: 12px; }
+/* 거르개에 걸려 빈칸이 하나도 없는 표: 제목 한 줄로 접는다 (눌러서 펴 볼 수는 있게) */
+.ct-skip { padding: 0; background: transparent; box-shadow: none; }
+.ct-skip > details > summary { cursor: pointer; list-style: none; display: flex;
+  justify-content: space-between; align-items: baseline; gap: 10px;
+  font-size: .84rem; font-weight: 600; color: var(--sub);
+  padding: 11px 15px; border: 1px dashed var(--line); border-radius: 12px; }
+.ct-skip > details > summary::-webkit-details-marker { display: none; }
+.ct-skip > details > summary:hover { border-color: var(--sub); color: var(--ink); }
+.ct-skip > details > summary span { font-size: .72rem; font-weight: 400; color: var(--faint); }
+.ct-skip > details[open] > summary { margin-bottom: 4px; }
 /* 범위 밖 칸: 문제가 아니라 배경 */
 .ctoff { font-size: .78rem; color: var(--sub); padding: 4px 2px; line-height: 1.5; }
 

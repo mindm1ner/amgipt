@@ -1214,8 +1214,41 @@ function ctCatCount(quiz, cat) {
   return quiz.questions.reduce((t, q) => t + q.subs.filter(s => s.ct.cat === cat).length, 0);
 }
 
+/* ---------- 자주 틀린 칸만 빈칸 ----------
+   표를 다시 풀 때 이미 여러 번 맞힌 칸까지 매번 채워 넣는 건 시간 낭비다. 몇 번 이상
+   틀린 칸만 비우고 나머지는 원문을 펴 둔다. 0이면 거르지 않는다(전부).
+
+   ⚠️ 이 거르개는 **표 안에서만** 산다. 오늘의 복습(allSubs)에는 걸지 않는다 —
+      거기까지 걸면 아직 안 푼 새 카드가 통째로 사라져서 간격 반복이 멈춘다. */
+function ctMin(quiz) {
+  const v = S.ctMin && S.ctMin[quiz.range];
+  return typeof v === "number" ? v : 0;
+}
+function setCtMin(range, n) {
+  S.ctMin = S.ctMin || {};
+  S.ctMin[range] = n;
+  persist();
+}
+/* 지금 고른 범주 안에서, n번 이상 틀린 칸이 몇 개인가 (n=0 이면 범주 안 전부) */
+function ctMinCount(quiz, n) {
+  const cats = ctCats(quiz);
+  let t = 0;
+  for (const q of quiz.questions) for (const s of q.subs) {
+    if (!cats.has(s.ct.cat)) continue;
+    if (!n || ctHeat(subId(quiz, q, s)).w >= n) t++;
+  }
+  return t;
+}
+/* 이 칸이 지금 빈칸이 되는가. 범주와 오답 횟수를 둘 다 통과해야 한다 */
+function ctInScope(quiz, q, sub, cats, min) {
+  if (!cats.has(sub.ct.cat)) return false;
+  return !min || ctHeat(subId(quiz, q, sub)).w >= min;
+}
+
+const CT_MIN_STEPS = [[0, "전부"], [1, "1번 이상"], [2, "2번 이상"], [3, "3번 이상"]];
+
 function ctScopeHtml(quiz) {
-  const on = ctCats(quiz);
+  const on = ctCats(quiz), min = ctMin(quiz);
   return `<div class="ctscope">
     <div class="cs-head"><b>무엇을 외울까</b><span>고른 ${quiz.cats ? "칸" : "범주"}만 빈칸이 돼요. 이 과목에 저장돼요</span></div>
     <div class="cs-row">${ctAllCats(quiz).map(c => {
@@ -1224,6 +1257,15 @@ function ctScopeHtml(quiz) {
       return `<button class="ck" data-act="ct-cat" data-cat="${esc(c)}"
         aria-pressed="${on.has(c)}">${esc(CT_CAT_KO[c] || c)}<span class="n">${n}</span></button>`;
     }).join("")}</div>
+    <div class="cs-head cs-head2"><b>얼마나 틀린 것만</b>
+      <span>여러 번 틀린 자리만 다시 비워요. 나머지는 펴 둬요</span></div>
+    <div class="cs-row">${CT_MIN_STEPS.map(([n, label]) => {
+      const c = ctMinCount(quiz, n);
+      return `<button class="ck" data-act="ct-min" data-min="${n}"
+        aria-pressed="${min === n}">${label}<span class="n">${c}</span></button>`;
+    }).join("")}</div>
+    ${min && !ctMinCount(quiz, min) ? `<p class="cs-none">${
+      min}번 이상 틀린 칸이 아직 없어요. 단계를 낮추거나 ‘전부’로 돌리세요</p>` : ""}
   </div>`;
 }
 
@@ -1274,11 +1316,11 @@ function ctHeadLabels(q, hasSub) {
 function ctTableHtml(quiz, q, qi) {
   const byNo = new Map(q.subs.map((s, si) => [s.no, { s, si }]));
   const cols = q.ct.cols;
-  const cats = ctCats(quiz);
+  const cats = ctCats(quiz), min = ctMin(quiz);
   const blank = (no, narrow) => {
     const e = byNo.get(no); if (!e) return "";
-    // 범위 밖 범주는 문제가 아니라 배경이다. 원문을 그대로 펴 둔다
-    if (!cats.has(e.s.ct.cat)) return `<div class="ctoff">${esc(e.s.answer)}</div>`;
+    // 범위 밖 칸은 문제가 아니라 배경이다. 원문을 그대로 펴 둔다
+    if (!ctInScope(quiz, q, e.s, cats, min)) return `<div class="ctoff">${esc(e.s.answer)}</div>`;
     const id = subId(quiz, q, e.s);
     const l = latest(id);
     /* 상자 안 세부 예시는 짧고 개수가 많다. 한 줄씩 차지하면 표가 세로로 늘어져
@@ -1293,30 +1335,42 @@ function ctTableHtml(quiz, q, qi) {
       <span class="ctans"></span></div>`;
   };
   /* 지식·이해 아래 하위 구분이 없는 과목이 있다 (음악·미술 등). 그 표에선 열을 아예 뺀다 */
+  const nBlank = q.subs.filter(s => ctInScope(quiz, q, s, cats, min)).length;
   const hasSub = q.ct.rows.some(r => r.sub);
   const rows = q.ct.rows.map(r => {
     const cells = r.cells.map(c =>
       `<td colspan="${c.span}">${ctCellHtml(c, blank)}</td>`).join("");
     return `<tr>${ctHeadHtml(r, blank, hasSub)}${cells}</tr>`;
   }).join("");
+  const table = `<div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}${
+    q.ct.cls ? " " + esc(q.ct.cls) : ""}">
+      <thead><tr>${ctHeadLabels(q, hasSub)}
+        ${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+
+  /* 거르개를 켜면 조건에 맞는 칸이 하나도 없는 표가 여럿 나온다. 그것까지 다 펴 두면
+     정작 뚫린 칸 몇 개에 닿기까지 표를 넷씩 지나쳐야 한다. 한 줄로 접어 둔다 */
+  if (min && !nBlank) {
+    return `<section class="q-card ct-card ct-skip" data-qi="${qi}">
+      <details><summary>${esc(q.title)}<span>조건에 맞는 칸 없음</span></summary>
+        ${table}</details></section>`;
+  }
+
   return `
     <section class="q-card ct-card" data-qi="${qi}">
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
-        <span class="qpts">빈칸 ${q.subs.length}</span></div>
+        <span class="qpts">빈칸 ${nBlank}</span></div>
       <div class="q-frame">${esc(q.frame)}</div>
       ${q.ct.ideas.length ? `<details class="ct-ideas"><summary>${esc(q.ct.ideaLabel || "핵심 아이디어")} ${q.ct.ideas.length}</summary>
         <ul>${q.ct.ideas.map(i => `<li>${esc(i)}</li>`).join("")}</ul></details>` : ""}
-      <div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}${q.ct.cls ? " " + esc(q.ct.cls) : ""}">
-        <thead><tr>${ctHeadLabels(q, hasSub)}
-          ${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-      <div class="ct-acts">
+      ${table}
+      ${nBlank ? `<div class="ct-acts">
         <button class="btn primary" data-act="ct-grade">채점하기</button>
         <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
         <span class="ct-score"></span>
         <span class="ct-tip">엔터는 아래 칸, 방향키는 상하좌우</span>
-      </div>
+      </div>` : `<p class="ct-none">이 표에는 지금 조건에 맞는 칸이 없어요</p>`}
     </section>`;
 }
 
@@ -3278,6 +3332,13 @@ function onAppClick(e) {
     set.has(c) ? set.delete(c) : set.add(c);
     if (!set.size) return;   // 하나는 켜 둔다. 다 끄면 풀 게 없다
     setCtCats(quiz.range, set);
+    renderQuiz(quiz.id, false);
+    return;
+  }
+  if (act === "ct-min") {
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!quiz) return;
+    setCtMin(quiz.range, +btn.dataset.min);
     renderQuiz(quiz.id, false);
     return;
   }
