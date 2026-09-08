@@ -630,6 +630,37 @@ table.ctt th.ctcat { width: 74px; font-size: .72rem; font-weight: 700; text-alig
 table.ctt th.ctsub { width: 110px; font-size: .74rem; font-weight: 400; text-align: left; color: var(--sub); }
 /* 총론·창체는 단서가 문장이라 왼쪽 칸을 넓게 잡는다 (내체표는 하위 범주라 짧다) */
 table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-height: 1.45; }
+/* 체육 신체활동 예시표 — 표의 세 칸(영역·세부 영역·예시)이 모두 답이라 머리 칸에도
+   입력칸이 들어간다. 그래서 왼쪽 두 칸을 글자 폭이 아니라 입력칸 폭으로 잡는다 */
+/* 자동 폭으로 두면 왼쪽 두 칸이 입력칸 최소폭만큼 벌어져 예시 칸을 밀어내고,
+   표가 화면 밖으로 나가 가로로 밀어야 한다. 폭을 못 박아 예시 칸에 자리를 준다.
+   ⚠️ table-layout:fixed 에서 폭을 정하는 건 **첫 줄**, 곧 thead 다. 본문 th 에 적으면
+      무시되고 세 칸이 똑같이 3등분된다 */
+table.ctt-sinche { table-layout: fixed; }
+table.ctt-sinche thead th:nth-child(1) { width: 78px; }
+table.ctt-sinche thead th:nth-child(2) { width: 132px; }
+table.ctt-sinche th.ctcat { white-space: normal; vertical-align: middle; }
+table.ctt-sinche th.ctsub { color: var(--ink); line-height: 1.45; }
+table.ctt-sinche th .ctb { margin-bottom: 0; }
+table.ctt-sinche th .ctin { min-width: 54px; }
+/* 괄호 안 활동도 답이다. 어느 예시에 딸린 것인지가 보여야 하므로 예시 이름 아래에
+   한 겹 들여 상자로 묶는다. 상자를 안 씌우면 빈칸 스무 개가 한 칸에 쏟아져
+   어디까지가 '이동 움직임'의 것인지 알 수가 없다 */
+.ctitem { margin-bottom: 12px; }
+.ctitem:last-child { margin-bottom: 0; }
+.ctitem > .ctb { margin-bottom: 5px; }
+.ctsubs { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px;
+  margin-left: 11px; padding: 7px 9px; background: var(--hover);
+  border-left: 3px solid var(--faint); border-radius: 0 9px 9px 0; }
+.ctsubs .ctb { margin-bottom: 0; flex: 0 1 auto; max-width: 100%; gap: 2px; }
+.ctsubs .ctin { font-size: .75rem; padding: 3px 7px; min-width: 0; }
+.ctsubs .ctmark { width: 16px; height: 16px; font-size: .66rem; }
+.ctsubs .ctans { flex-basis: auto; font-size: .72rem; padding-left: 0; }
+/* 빈칸을 끄면 같은 자리에 글자가 눕는다. 쉼표는 CSS 가 찍는다 (답에는 없는 글자다) */
+.ctsubs .ctoff { display: inline; padding: 0; font-size: .74rem; }
+.ctsubs .ctoff:not(:last-of-type)::after { content: ","; }
+.cttail { font-size: .74rem; color: var(--faint); }
+.ctsubs .hcell { font-size: .74rem; flex: 0 1 auto; width: auto; margin: 0; }
 .ctb { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
 .ctb:last-child { margin-bottom: 0; }
 .ctin { flex: 1; min-width: 90px; font: inherit; font-size: .8rem; color: var(--ink);
@@ -680,6 +711,9 @@ table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-
 @media (max-width: 560px) {
   table.ctt th.ctsub { width: 84px; font-size: .7rem; }
   table.ctt-cue th.ctsub { width: 42%; font-size: .74rem; }
+  table.ctt-sinche thead th:nth-child(1) { width: 62px; }
+  table.ctt-sinche thead th:nth-child(2) { width: 104px; }
+  table.ctt-sinche th.ctsub { font-size: .72rem; }
   .ctin { font-size: .76rem; min-width: 70px; }
 }
 

@@ -221,11 +221,15 @@ for (const set of (window.DAJIGI_CT || [])) {
       /* type "term" 은 parts 로 채점한다 (groups 는 essay 용). 표 안에서 풀든
          오늘의 복습에서 한 장씩 나오든 같은 답으로 판정되게 둘 다 채워 둔다 */
       subs: q.subs.map(s => ({
-        no: s.no, type: "term", hideHead: true, points: 0, prompt: "",
+        /* 표 밖(오늘의 복습)에서 한 장씩 나올 때는 표가 안 보인다. 자료가 물음을
+           들고 오면(체육 신체활동 예시표) 그것을 쓰고, 없으면 예전처럼 범주·학년군만 */
+        no: s.no, type: "term", hideHead: true, points: 0, prompt: s.ask || "",
         answer: s.a,
+        /* alt = 같은 묶음의 답들. 표 밖에서는 옆 칸이 안 보여서 "셋 중 하나를 쓰라"
+           고 물을 수밖에 없다. 그때는 어느 것을 써도 맞다 (첫 번째가 모범답안) */
         parts: [{ label: [s.cat.replace("⋅", "·"), s.gr].filter(Boolean).join(" · "),
-                  accept: [s.a] }],
-        ct: { cat: s.cat, gr: s.gr }
+                  accept: s.alt && s.alt.length ? s.alt : [s.a] }],
+        ct: { cat: s.cat, gr: s.gr, g: s.g }
       }))
     }))
   });
@@ -1213,7 +1217,7 @@ function ctCatCount(quiz, cat) {
 function ctScopeHtml(quiz) {
   const on = ctCats(quiz);
   return `<div class="ctscope">
-    <div class="cs-head"><b>무엇을 외울까</b><span>고른 범주만 빈칸이 돼요. 이 과목에 저장돼요</span></div>
+    <div class="cs-head"><b>무엇을 외울까</b><span>고른 ${quiz.cats ? "칸" : "범주"}만 빈칸이 돼요. 이 과목에 저장돼요</span></div>
     <div class="cs-row">${ctAllCats(quiz).map(c => {
       const n = ctCatCount(quiz, c);
       if (!n) return "";
@@ -1223,17 +1227,66 @@ function ctScopeHtml(quiz) {
   </div>`;
 }
 
+/* 행의 모든 빈칸 번호 (머리 칸 포함). 머리 칸을 빼면 그 카드는 자기가 어느 줄에
+   있는지 모르는 채로 채점·진단·기록 표시를 받는다 */
+function ctRowIds(r) {
+  return [].concat(r.catIds || [], r.subIds || [], ...(r.cells || []).map(c => c.ids));
+}
+
+/* ---------- 표의 머리 칸도 빈칸이 될 수 있다 ----------
+   내용 체계표는 머리 칸(범주·영역)이 단서고 내용 요소만 답이었다. 체육 신체활동 예시표는
+   **세 칸이 다 답**이다 — 영역(운동·스포츠·표현), 세부 영역(기본 체력운동 …), 예시 이름.
+   그래서 행이 `catIds`·`subIds` 를 들고 오면 글자 대신 빈칸을 그린다. 안 들고 오면
+   예전 그대로 글자다(내체표·총론·창체는 아무것도 안 바뀐다).
+
+   catSpan = 그 영역이 세로로 차지하는 줄 수. 0 이면 위 줄에 합쳐진 자리라 <th>를 안 낸다. */
+function ctHeadHtml(r, mk, hasSub) {
+  let h = "";
+  if (r.catSpan !== 0) {
+    const sp = r.catSpan > 1 ? ` rowspan="${r.catSpan}"` : "";
+    h += `<th class="ctcat"${sp}>${r.catIds ? r.catIds.map(mk).join("")
+      : esc(CT_CAT_KO[r.cat] || r.cat)}</th>`;
+  }
+  if (hasSub) {
+    h += `<th class="ctsub">${r.subIds ? r.subIds.map(mk).join("") : esc(r.sub || "")}</th>`;
+  }
+  return h;
+}
+/* 괄호 안 활동도 답이다. 다만 그것이 **어느 예시에 딸린 것인지**가 보여야 한다.
+   그래서 예시 이름 아래에 한 겹 들여 상자로 묶는다 (`.ctsubs`). 상자 안은 짧은 답이
+   여럿이라 세로로 쌓지 않고 옆으로 눕힌다. `items` 가 없는 표(내체표·총론·창체)는
+   예전처럼 빈칸만 줄줄이 낸다 */
+function ctCellHtml(c, mk) {
+  const items = c.items || c.ids.map(id => ({ id, sub: [] }));
+  return items.map(it => {
+    const head = mk(it.id);
+    if (!it.sub || !it.sub.length) return head;
+    return `<div class="ctitem">${head}<div class="ctsubs">${
+      it.sub.map(id => mk(id, true)).join("")}${
+      it.tail ? `<span class="cttail">${esc(it.tail)}</span>` : ""}</div></div>`;
+  }).join("");
+}
+function ctHeadLabels(q, hasSub) {
+  const h = (q.ct && q.ct.head) || [];
+  return `<th>${esc(h[0] || "")}</th>` + (hasSub ? `<th>${esc(h[1] || "")}</th>` : "");
+}
+
 function ctTableHtml(quiz, q, qi) {
   const byNo = new Map(q.subs.map((s, si) => [s.no, { s, si }]));
   const cols = q.ct.cols;
   const cats = ctCats(quiz);
-  const blank = (no) => {
+  const blank = (no, narrow) => {
     const e = byNo.get(no); if (!e) return "";
     // 범위 밖 범주는 문제가 아니라 배경이다. 원문을 그대로 펴 둔다
     if (!cats.has(e.s.ct.cat)) return `<div class="ctoff">${esc(e.s.answer)}</div>`;
     const id = subId(quiz, q, e.s);
     const l = latest(id);
-    return `<div class="ctb" data-sid="${esc(id)}" data-ans="${esc(e.s.answer)}">
+    /* 상자 안 세부 예시는 짧고 개수가 많다. 한 줄씩 차지하면 표가 세로로 늘어져
+       어느 예시에 딸린 것인지가 도로 안 보인다. 답 길이만큼만 잡아 옆으로 눕힌다 */
+    const w = narrow
+      ? ` style="width:${Math.min(e.s.answer.length, 15) + 3.4}em"` : "";
+    return `<div class="ctb${narrow ? " ctb-sm" : ""}"${w}
+      data-sid="${esc(id)}" data-ans="${esc(e.s.answer)}">
       <input type="text" class="ctin" aria-label="내용 요소 빈칸" autocomplete="off" spellcheck="false">
       <button class="ctmark" data-act="ct-mark" aria-label="판정 바꾸기"
         >${l ? (l.r === "O" ? "O" : l.r === "X" ? "X" : "△") : ""}</button>
@@ -1243,9 +1296,8 @@ function ctTableHtml(quiz, q, qi) {
   const hasSub = q.ct.rows.some(r => r.sub);
   const rows = q.ct.rows.map(r => {
     const cells = r.cells.map(c =>
-      `<td colspan="${c.span}">${c.ids.map(blank).join("")}</td>`).join("");
-    return `<tr><th class="ctcat">${esc(CT_CAT_KO[r.cat] || r.cat)}</th>
-      ${hasSub ? `<th class="ctsub">${esc(r.sub || "")}</th>` : ""}${cells}</tr>`;
+      `<td colspan="${c.span}">${ctCellHtml(c, blank)}</td>`).join("");
+    return `<tr>${ctHeadHtml(r, blank, hasSub)}${cells}</tr>`;
   }).join("");
   return `
     <section class="q-card ct-card" data-qi="${qi}">
@@ -1254,8 +1306,8 @@ function ctTableHtml(quiz, q, qi) {
       <div class="q-frame">${esc(q.frame)}</div>
       ${q.ct.ideas.length ? `<details class="ct-ideas"><summary>${esc(q.ct.ideaLabel || "핵심 아이디어")} ${q.ct.ideas.length}</summary>
         <ul>${q.ct.ideas.map(i => `<li>${esc(i)}</li>`).join("")}</ul></details>` : ""}
-      <div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}">
-        <thead><tr><th></th>${hasSub ? "<th></th>" : ""}
+      <div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}${q.ct.cls ? " " + esc(q.ct.cls) : ""}">
+        <thead><tr>${ctHeadLabels(q, hasSub)}
           ${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
@@ -1288,7 +1340,7 @@ function ctHeat(id) {
 /* 칸 번호 -> 영역. ctCardCtx 와 같은 표지만 저쪽은 주소창을 읽어서 쓸 수 없다 */
 function ctAreaMap(q) {
   const a = new Map();
-  if (q.ct) q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => a.set(id, r.sub || q.title || ""))));
+  if (q.ct) q.ct.rows.forEach(r => ctRowIds(r).forEach(id => a.set(id, r.sub || q.title || "")));
   return a;
 }
 /* 받침 있으면 "과", 없으면 "와" */
@@ -1303,7 +1355,7 @@ function ctHeatTableHtml(quiz, q, qi) {
   const byNo = new Map(q.subs.map(s => [s.no, s]));
   const cats = ctCats(quiz);
   let wrongN = 0, hotN = 0;
-  const cell = (no) => {
+  const cell = (no, narrow) => {
     const s = byNo.get(no);
     if (!s) return "";
     if (!cats.has(s.ct.cat)) return `<div class="ctoff">${esc(s.answer)}</div>`;
@@ -1321,12 +1373,11 @@ function ctHeatTableHtml(quiz, q, qi) {
   };
   const hasSub = q.ct.rows.some(r => r.sub);
   const rows = q.ct.rows.map(r => {
-    const cells = r.cells.map(c => `<td colspan="${c.span}">${c.ids.map(cell).join("")}</td>`).join("");
-    return `<tr><th class="ctcat">${esc(CT_CAT_KO[r.cat] || r.cat)}</th>
-      ${hasSub ? `<th class="ctsub">${esc(r.sub || "")}</th>` : ""}${cells}</tr>`;
+    const cells = r.cells.map(c => `<td colspan="${c.span}">${ctCellHtml(c, cell)}</td>`).join("");
+    return `<tr>${ctHeadHtml(r, cell, hasSub)}${cells}</tr>`;
   }).join("");
-  const table = `<div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}">
-      <thead><tr><th></th>${hasSub ? "<th></th>" : ""}
+  const table = `<div class="ct-scroll"><table class="ctt${q.ct.cueWide ? " ctt-cue" : ""}${q.ct.cls ? " " + esc(q.ct.cls) : ""}">
+      <thead><tr>${ctHeadLabels(q, hasSub)}
         ${q.ct.cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   /* 깨끗한 표까지 다 펴 두면 정작 볼 표를 찾느라 스크롤을 한참 내린다. 접어 둔다 */
@@ -2004,7 +2055,7 @@ function ctCardCtx(card) {
   /* 칸 번호 → 영역. 표 문항 하나가 영역 하나라 기본은 q.title,
      그 아래 한 겹 더 갈리는 과목(영어)만 행의 sub를 쓴다 */
   const area = new Map();
-  q.ct.rows.forEach(r => r.cells.forEach(c => c.ids.forEach(id => area.set(id, r.sub || q.title || ""))));
+  q.ct.rows.forEach(r => ctRowIds(r).forEach(id => area.set(id, r.sub || q.title || "")));
   return { quiz, q, area };
 }
 /* 같은 [범주 · 영역 · 학년군] 묶음 열쇠. 이 안의 내용 요소는 나열이라 순서가 없다.
@@ -2015,9 +2066,15 @@ function ctGroupKey(ctx, no) {
   /* 내체표만 묶는다. 총론·창체도 kind가 "ct"지만 범주·영역·학년군 자리에 조항 이름이나
      교과명이 들어가 세 값이 같아져 버린다. 시수표는 3~4학년과 5~6학년이 둘 다 408처럼
      같은 값을 갖는 칸이 있어서, 묶으면 한 번 써도 다른 칸이 오답이 된다 */
-  if (!ctx || ctx.quiz.kind !== "ct" || ctx.quiz.subject !== "내체표") return null;
+  if (!ctx || ctx.quiz.kind !== "ct") return null;
+  /* 체육 신체활동 예시표처럼 자료가 스스로 "이 표는 나열이다"라고 밝히면 그것도 묶는다 */
+  if (ctx.quiz.subject !== "내체표" && !ctx.quiz.group) return null;
   const s = (ctx.q.subs || []).find(x => x.no === no);
   if (!s || !s.ct) return null;
+  /* 자료가 묶음을 직접 밝히면 그것을 쓴다. 체육 신체활동 예시표의 괄호 안 활동은
+     같은 줄에 있어도 어느 예시에 딸렸는지까지 갈라야 해서, 범주·영역·학년군 셋으로는
+     모자란다 (한 줄의 예시 셋이 저마다 제 상자를 갖는다) */
+  if (s.ct.g) return s.ct.g;
   return `${s.ct.cat}|${ctx.area.get(no) || ""}|${s.ct.gr}`;
 }
 
