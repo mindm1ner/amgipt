@@ -1171,7 +1171,10 @@ function homeMainHtml() {
         <p>${allWon && !c.all
           ? "과목 " + ranges.size + " · 원문에서 외울 자리를 드래그하면 카드가 돼요"
           : "영역 " + ranges.size + " · 카드 " + c.all + "장"}</p></div>
-        ${c.relearn + c.review ? `<button class="btn primary" data-act="start-scope" data-scope="${esc(sel)}">복습 ${c.relearn + c.review}장</button>` : ""}</div>
+        <div class="mhead-btns">
+          ${c.relearn + c.review ? `<button class="btn primary" data-act="start-scope" data-scope="${esc(sel)}">복습 ${c.relearn + c.review}장</button>` : ""}
+          <button class="btn" data-act="set-new" data-subject="${esc(s)}" title="이 과목에 내 세트 만들기">${ico("plus")} 내 세트</button>
+        </div></div>
       ${[...ranges.entries()].map(([name, quizzes]) => {
         /* 카드 수는 범위 밖 칸을 뺀 실제 수로 센다 (내체표는 과목마다 범주를 고른다) */
         const rc = queueCounts("ar:" + s + "|" + name);
@@ -1179,14 +1182,22 @@ function homeMainHtml() {
            자료가 안 들어온 것처럼 보이므로, 그때는 몇 쪽짜리 원문인지를 보여 준다 */
         const won = !rc.all && quizzes.every(q => q.kind === "won");
         const pages = won ? quizzes.reduce((a, q) => a + (q.docs ? q.docs.length : 0), 0) : 0;
-        return `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
+        /* 내 세트는 줄에서 바로 고칠 수 있게 연필을 붙인다. 단추 안에 단추를 넣을 수
+           없어서 줄을 감싸고 옆에 세운다 */
+        const my = quizzes.length === 1 && quizzes[0].kind === "my" ? quizzes[0] : null;
+        const row = `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
             data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
           <span class="nm">${esc(name)}</span>
           <span class="cnt">${won ? "원문 " + pages + "쪽" : rc.all + "장"}</span>
           ${rc.weak ? `<span class="bdg warn">다시 ${rc.weak}</span>` : ""}
           ${rc.relearn + rc.review ? `<span class="bdg">${rc.relearn + rc.review}</span>` : ""}
         </button>`;
-      }).join("")}`;
+        if (!my) return row;
+        return `<div class="mrow-my">${row}
+          <button class="ibtn" data-act="set-open" data-id="${esc(my.id)}" title="세트 고치기">${ico("pen")}</button>
+        </div>`;
+      }).join("")}
+      ${ranges.size ? "" : `<p class="mt-empty">이 과목엔 아직 자료가 없어요. '내 세트'로 직접 만들 수 있어요.</p>`}`;
   }
 
   /* 상태 화면 */
@@ -3639,7 +3650,8 @@ function onAppClick(e) {
 
   /* ---------- 내 세트 ---------- */
   if (act === "set-new") {
-    const s = { id: mysetNewId(), subject: "내 자료", title: "새 세트", items: [], seq: 0, ts: Date.now() };
+    /* 과목 화면에서 눌렀으면 그 과목을 물려받는다 (거기서 만들었으니 거기 두는 게 맞다) */
+    const s = { id: mysetNewId(), subject: btn.dataset.subject || "내 자료", title: "새 세트", items: [], seq: 0, ts: Date.now() };
     mysets().push(s);
     persist(); mysetBuild();
     EDIT_CARD = null;

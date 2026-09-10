@@ -989,3 +989,9 @@ table.ctt-sinche th .ctin { min-width: 54px; }
 .setpack summary .cnt { font-size: .72rem; color: var(--faint); font-weight: 400; }
 .setpack .mrow { padding-left: 10px; }
 .setpack .ck { flex-shrink: 0; }
+
+/* 과목 화면: 내 세트 줄에는 연필을 붙인다 (단추 안에 단추를 못 넣어 옆에 세운다) */
+.mhead-btns { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.mrow-my { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.mrow-my .mrow { border-bottom: 0; }
+.mrow-my .ibtn { flex-shrink: 0; }
