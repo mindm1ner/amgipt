@@ -940,3 +940,52 @@ table.ctt-sinche th .ctin { min-width: 54px; }
   background: var(--card); border: 1px solid var(--line); border-radius: 999px;
   padding: 2px 9px; margin-left: 7px; cursor: pointer; }
 .dgrp-map:hover { border-color: var(--sub); color: var(--ink); }
+
+/* ---------- 오늘의 복습: 과목 카드 ----------
+   카드를 한 줄씩 서른 개 늘어놓으면 과목이 뒤섞여 '무엇부터'가 안 보인다.
+   과목을 먼저 고르고, 그 안에서 줄을 눌러 바로 시작한다 */
+.subjcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px; margin-top: 4px; }
+.sjcard { display: flex; flex-direction: column; gap: 3px; text-align: left;
+  font: inherit; color: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: 13px;
+  padding: 13px 15px; transition: border-color .13s, transform .08s; }
+.sjcard:hover { border-color: var(--accent); }
+.sjcard:active { transform: scale(.99); }
+.sj-n { font-size: .95rem; font-weight: 700; }
+.sj-c { font-size: 1.3rem; line-height: 1.15; font-weight: normal;
+  font-family: "HsSummerWaterLight", Batang, serif; font-variant-numeric: tabular-nums; }
+.sj-m { display: flex; gap: 8px; font-size: .7rem; font-style: normal; }
+.sj-m i { font-style: normal; font-weight: 700; }
+.sj-m i.x { color: var(--no); }
+.sj-m i.o { color: var(--sub); }
+
+/* ---------- 내 세트 ----------
+   앱 안에서 만드는 자료. 물음·모범답안을 쓰고, 답 위에 형광펜을 칠하면 그 말이 채점 키워드 */
+.setmeta { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+  padding: 12px 0 14px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.setmeta label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 130px;
+  font-size: .7rem; color: var(--sub); font-weight: 700; }
+.setmeta input { font: inherit; font-size: .88rem; padding: 8px 11px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--ink); }
+.sethint { font-size: .74rem; color: var(--sub); line-height: 1.65; margin-bottom: 12px; }
+.sethint b { color: var(--ink); }
+.setcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 15px; margin-bottom: 10px; }
+.sc-head { display: flex; align-items: baseline; gap: 8px; }
+.sc-q { flex: 1; font-weight: 700; font-size: .9rem; line-height: 1.5; }
+/* 답 칸. 여기서 드래그·탭으로 형광펜을 칠한다 (iOS 는 -webkit- 접두사가 있어야 글자가 골라진다) */
+.myset-ans { margin-top: 7px; font-size: .88rem; line-height: 1.95; color: var(--ink);
+  -webkit-user-select: text; user-select: text; }
+.sc-k { margin-top: 8px; font-size: .7rem; color: var(--faint); }
+.sc-none { color: var(--faint); }
+.setcard textarea { width: 100%; font: inherit; font-size: .88rem; line-height: 1.7;
+  padding: 9px 12px; margin-bottom: 8px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); }
+.setcard .qe-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.setpack { border-bottom: 1px solid var(--line); }
+.setpack summary { display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: .84rem; font-weight: 700; padding: 10px 2px; }
+.setpack summary .cnt { font-size: .72rem; color: var(--faint); font-weight: 400; }
+.setpack .mrow { padding-left: 10px; }
+.setpack .ck { flex-shrink: 0; }

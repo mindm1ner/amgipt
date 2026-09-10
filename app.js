@@ -98,6 +98,36 @@ function mergeRemote(remote) {
         : v;
     }
   }
+  /* 내 세트 병합: 같은 id 는 나중에 고친 쪽(ts)이 이긴다.
+     지운 세트는 무덤(setsDel)에 시각을 남긴다 — 안 그러면 다른 기기가 들고 있던
+     사본이 다음 동기화에 되살아난다. 원문 빈칸은 되살아나도 다시 지우면 그만이지만
+     세트는 통째로 돌아오므로 지운 셈이 안 된다 */
+  const del = (S.setsDel = (S.setsDel && typeof S.setsDel === "object") ? S.setsDel : {});
+  for (const [id, t] of Object.entries(remote.setsDel || {})) if ((del[id] || 0) < t) del[id] = t;
+  if (Array.isArray(remote.sets)) {
+    const L = mysets();
+    for (const r of remote.sets) {
+      if (!r || !r.id) continue;
+      if ((del[r.id] || 0) > (r.ts || 0)) continue;       // 지운 뒤에 온 사본
+      const i = L.findIndex(x => x.id === r.id);
+      if (i < 0) { L.push(r); added++; }
+      else if ((r.ts || 0) > (L[i].ts || 0)) { L[i] = r; added++; }
+    }
+  }
+  for (const [id, t] of Object.entries(del)) {            // 다른 기기에서 지운 것
+    const L = mysets();
+    const i = L.findIndex(x => x.id === id);
+    if (i >= 0 && (L[i].ts || 0) < t) L.splice(i, 1);
+  }
+  /* 숨김은 늦게 누른 쪽이 이긴다 */
+  if (remote.hidden && typeof remote.hidden === "object") {
+    const H = hiddenMap();
+    for (const [id, v] of Object.entries(remote.hidden)) {
+      if (!v || typeof v !== "object") continue;
+      if (!H[id] || (v.t || 0) > (H[id].t || 0)) H[id] = v;
+    }
+  }
+  if (typeof rebuildData === "function") rebuildData();   // 숨김·내 세트를 화면에 반영
   if (remote.lastExport && (!S.lastExport || remote.lastExport > S.lastExport)) S.lastExport = remote.lastExport;
   if ((remote.streakDays || 0) > (S.streakDays || 0)) S.streakDays = remote.streakDays;
   if (remote.lastGoalDate && (!S.lastGoalDate || remote.lastGoalDate > S.lastGoalDate)) S.lastGoalDate = remote.lastGoalDate;
@@ -289,6 +319,11 @@ for (const set of (window.DAJIGI_SGI || [])) {
   });
 }
 
+/* ---------- 자료 파일에서 온 세트 원본 (숨기기·되살리기용) ----------
+   숨긴 세트는 DATA 에서 통째로 뺀다. 빼기만 하면 되살릴 곳이 없어서 원본을 떠 둔다.
+   원문(won)·내 세트(my)는 이 뒤에 따로 붙으므로 여기에는 안 들어 있다. */
+const ALL_SETS = DATA.slice();
+
 /* ---------- 저장소 ---------- */
 function loadStore() {
   try {
@@ -333,6 +368,82 @@ function persist() { localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(
   }
   if (changed) persist();
 })();
+
+/* ---------- 내 세트 · 세트 숨기기 ----------
+   여태 앱 안에서 고칠 수 있는 건 **카드에 붙이는 내 질문**뿐이었다. 세트는 전부
+   data/*.js 라 스크립트를 돌려야 했고, "이건 따로 모아 외우고 싶다"를 받아 줄 데가 없었다.
+
+   - 내 세트 (S.sets)   : 과목·이름·카드를 앱에서 만들고 고치고 지운다
+   - 숨기기  (S.hidden) : 자료 파일에서 온 세트는 지우지 않는다(다음 빌드에 되살아난다).
+                          메뉴·복습·오답에서 안 보이게만 하고 언제든 되살린다
+
+   ⭐ 기록 열쇠가 `세트 id | 카드 번호 | 인출` 이다. 그래서 카드 번호는 자리(1,2,3…)가
+   아니라 **한 번 준 이름표(c1,c2…)** 를 끝까지 쓴다. 중간에 카드를 끼우거나 지워도
+   뒤 카드의 기록이 안 밀린다. 지운 번호는 다시 쓰지 않는다(seq 는 늘기만 한다) —
+   다시 쓰면 옛 기록이 엉뚱한 카드에 달라붙는다. 총론 빈칸 번호 잠금과 같은 이유다. */
+function mysets() { return (S.sets = Array.isArray(S.sets) ? S.sets : []); }
+function mysetFind(id) { return mysets().find(x => x.id === id) || null; }
+function mysetItem(id, no) { const s = mysetFind(id); return s ? (s.items || []).find(x => x.no === no) : null; }
+function hiddenMap() { return (S.hidden = (S.hidden && typeof S.hidden === "object") ? S.hidden : {}); }
+function isHidden(id) { const h = hiddenMap()[id]; return !!(h && h.h); }
+function setHidden(id, on) {
+  /* 시각을 같이 남긴다. 기기끼리 합칠 때 늦게 누른 쪽이 이긴다 */
+  hiddenMap()[id] = { h: !!on, t: Date.now() };
+  persist();
+  rebuildData();
+}
+/* 형광펜은 글자를 그대로 집는다. 낱말을 톡 누르면 조사까지 딸려 온다("비계를").
+   조사를 떼려다 '민주주의'가 '민주주'가 되는 쪽이 더 나쁘므로 칠한 말은 그대로 두고,
+   **채점할 때만** 조사를 뗀 꼴을 하나 더 인정한다. 인정 범위가 넓어지기만 하므로 안전하다.
+   (긴 조사부터 본다. 떼고 두 글자가 안 남으면 안 뗀다 — '이것' 같은 말이 '이'가 된다) */
+const KW_JOSA = ["으로서", "으로써", "이라고", "이라는", "에게서", "에서는", "으로", "이라", "에게", "에서", "부터",
+  "까지", "라고", "라는", "와의", "과의", "만큼", "처럼", "보다", "을", "를", "이", "가", "은", "는",
+  "의", "에", "와", "과", "로", "도", "만", "께"];
+function kwVariants(w) {
+  for (const j of KW_JOSA) if (w.endsWith(j) && w.length - j.length >= 2) return [w, w.slice(0, -j.length)];
+  return [w];
+}
+function mysetNewId() { return "my-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function mysetTouch(set) { set.ts = Date.now(); persist(); mysetBuild(); }
+
+/* 내 세트 → 복습 엔진이 아는 모양. 단권화(dan-*)와 같은 구조라 세션·집중 인출·
+   오답 뽀개기·간격 반복이 전부 그대로 돈다.
+   형광펜을 한 곳도 안 칠했으면 자동 채점할 근거가 없다 → 본인 판정(self) */
+function mysetBuild() {
+  for (let k = DATA.length - 1; k >= 0; k--) if (DATA[k].kind === "my") DATA.splice(k, 1);
+  for (const set of mysets()) {
+    if (isHidden(set.id)) continue;
+    DATA.push({
+      id: set.id,
+      subject: set.subject || "내 자료",
+      range: set.title || "내 세트",
+      title: set.title || "내 세트",
+      scope: "내가 만든 세트",
+      base: "물음에 답하고, 형광펜으로 칠한 말로 채점한다",
+      kind: "my", mode: "review", rules: null,
+      questions: (set.items || []).map(it => ({
+        no: it.no, points: 0, title: it.title || "(물음 없음)", body: "",
+        frame: "내 세트 · " + (set.title || ""),
+        subs: [{
+          no: "인출", hideHead: true, points: 0,
+          type: (it.k && it.k.length) ? "essay" : "self",
+          prompt: "", ph: "아는 만큼 써 보세요",
+          groups: (it.k || []).map(w => ({ name: w, variants: kwVariants(w) })),
+          answer: it.model || ""
+        }]
+      }))
+    });
+  }
+}
+
+/* 숨긴 세트를 뺀 채로 DATA 를 다시 세운다. 차례는 자료 파일 순서 그대로 두고
+   원문·내 세트를 뒤에 붙인다 (메뉴 차례가 흔들리면 손이 자리를 못 기억한다) */
+function rebuildData() {
+  DATA.length = 0;
+  for (const set of ALL_SETS) if (!isHidden(set.id)) DATA.push(set);
+  wonBuild();
+  mysetBuild();
+}
 
 function subId(quiz, q, sub) { return quiz.id + "|" + q.no + "|" + sub.no; }
 function history(id) { return S.records[id] || []; }
@@ -490,9 +601,21 @@ function spread(list) {
   return out;
 }
 
+/* ---------- 한 장씩 뽑아 내는 큐에 태울 카드인가 ----------
+   내체표 표 빈칸은 **표 위에서** 푸는 물건이다. 어느 영역·어느 학년군 칸인지가
+   화면의 자리로 보여야 답이 골라지는데, 한 장씩 뽑아 놓으면 그 자리가 사라진다.
+   그래서 내체표는 맥락형(ctx)·성취기준형(sgi)만 복습으로 돌리고, 표(ct)는 표 화면에서
+   직접 푼다. 기록·오답 목록·형광펜 표는 그대로다 — 빠지는 건 큐뿐이다.
+   총론·창체·체육 표는 조항·예시 자체가 단서라 한 장씩 나와도 풀린다. 그래서 안 뺀다. */
+function inReviewFlow(x) {
+  return !(x.quiz.kind === "ct" && x.quiz.subject === "내체표");
+}
+
 function buildQueue(mode, scope) {
-  const subs = scopedSubs(scope);
-  if (mode === "all") return spread(subs);
+  const all = scopedSubs(scope);
+  if (mode === "all") return spread(all);
+  /* 여기부터는 카드가 한 장씩 뽑혀 나오는 큐다. 표에서 풀 카드는 안 태운다 */
+  const subs = all.filter(inReviewFlow);
   if (mode === "chronic") return spread(subs.filter(x => x.st.chronic));
   /* 다시 볼 것 → 복습 순서는 지키되, 각 묶음 안에서는 섞는다.
 
@@ -509,9 +632,13 @@ function buildQueue(mode, scope) {
   return [...relearn, ...review];
 }
 function queueCounts(scope) {
-  const subs = scopedSubs(scope).map(x => x.st);
+  const list = scopedSubs(scope);
+  const all = list.map(x => x.st);
+  /* '카드 N장'·'틀린 것'은 표까지 다 세고, 오늘 볼 것·아직 안 함·고질 약점은
+     큐에 실리는 것만 센다 (표는 표에서 푼다 — inReviewFlow) */
+  const subs = list.filter(inReviewFlow).map(x => x.st);
   return {
-    all: subs.length,
+    all: all.length,
     fresh: subs.filter(s => s.status === "new").length,
     relearn: subs.filter(s => s.status === "relearn" && s.isDue).length,
     review: subs.filter(s => s.status === "review" && s.isDue).length,
@@ -899,13 +1026,18 @@ function homeMenuHtml() {
         return menuItem("sj:" + s, "", s, c.relearn + c.review || c.all, !!(c.relearn + c.review));
       }).join("")}
     </div>
+    <div class="sgroup"><div class="slabel">자료</div>
+      ${menuItem("st:sets", "pen", "내 세트", mysets().length)}
+    </div>
     <div class="sgroup"><div class="slabel">기록</div>
       ${qc.chronic ? menuItem("st:chronic", "bolt", "고질 약점", qc.chronic) : ""}
       ${menuItem("st:log", "chart", "기록", 0)}
     </div>`;
 }
 
-function rowsHtml(list) {
+/* 카드 줄. go = {mode, scope} 를 주면 줄 자체가 단추가 되어
+   "N장 시작"을 안 눌러도 그 카드부터 복습이 시작된다 */
+function rowsHtml(list, go) {
   if (!list.length) return `<p class="mt-empty">여기는 비어 있어요.</p>`;
   return list.map(x => {
     /* 기출 문항은 한 문항에 소문항이 여럿이라 제목만 쓰면 같은 줄이 반복돼 보인다 */
@@ -914,11 +1046,36 @@ function rowsHtml(list) {
     const sn = x.sub.sn || x.sub.no;
     const nm = x.q.subs.length > 1 ? `${base} <span class="sn">${esc(sn)}</span>` : base;
     const v = x.st.last ? x.st.last.r : null;
-    return `<div class="mrow">
-      <span class="nm">${nm}<span class="tag">${esc(x.quiz.subject)} · ${esc(rangeOf(x.quiz))}</span></span>
-      ${v ? `<span class="vd ${v === "O" ? "o" : v === "X" ? "x" : "t"}">${v === "T" ? "△" : v}</span>` : ""}
-    </div>`;
+    const inner = `<span class="nm">${nm}<span class="tag">${esc(x.quiz.subject)} · ${esc(rangeOf(x.quiz))}</span></span>
+      ${v ? `<span class="vd ${v === "O" ? "o" : v === "X" ? "x" : "t"}">${v === "T" ? "△" : v}</span>` : ""}`;
+    if (!go) return `<div class="mrow">${inner}</div>`;
+    return `<button class="mrow click" data-act="start-one" data-sid="${esc(x.id)}"
+      data-mode="${esc(go.mode || "today")}" data-scope="${esc(go.scope || "")}">${inner}</button>`;
   }).join("");
+}
+
+/* ---------- 오늘의 복습: 과목 카드로 묶는다 ----------
+   카드를 한 줄씩 늘어놓으면 서른 줄이 과목 없이 뒤섞여서 '무엇부터'가 안 보인다.
+   과목 카드를 먼저 놓고, 누르면 그 과목 몫만 펼친다. */
+function todaySubjects(queue) {
+  const out = new Map();
+  for (const x of queue) {
+    const s = x.quiz.subject;
+    if (!out.has(s)) out.set(s, { n: 0, relearn: 0, review: 0 });
+    const o = out.get(s);
+    o.n++;
+    if (x.st.status === "relearn") o.relearn++; else o.review++;
+  }
+  return [...out.entries()].sort((a, b) => b[1].relearn - a[1].relearn || b[1].n - a[1].n);
+}
+function subjCardsHtml(queue) {
+  return `<div class="subjcards">${todaySubjects(queue).map(([s, o]) => `
+    <button class="sjcard" data-act="home-go" data-sel="today:${esc(s)}">
+      <span class="sj-n">${esc(s)}</span>
+      <span class="sj-c">${o.n}장</span>
+      <span class="sj-m">${o.relearn ? `<i class="x">다시 ${o.relearn}</i>` : ""}${
+        o.review ? `<i class="o">복습 ${o.review}</i>` : ""}</span>
+    </button>`).join("")}</div>`;
 }
 
 /* 기록이 쌓인 내체표 묶음. 기록 탭 위에 과목 칩으로 놓아 표를 바로 연다.
@@ -952,6 +1109,20 @@ function homeMainHtml() {
         <p>틀린 자리에 형광펜이 쌓여요. 칸을 누르면 그때 쓴 답이 나와요</p></div></div>
       ${ctHeatHtml(quiz)}`;
   }
+
+  /* 오늘의 복습 · 과목 하나 */
+  if (sel.startsWith("today:")) {
+    const s = sel.slice(6);
+    const list = buildQueue("today", "sj:" + s);
+    return `<div class="mhead"><div>
+        <button class="btn ghost sm" data-act="home-go" data-sel="st:today">${ico("back")} 오늘의 복습</button>
+        <h2>${esc(s)}</h2>
+        <p>오늘 볼 카드 ${list.length}장 · 아무 줄이나 눌러도 거기서 시작해요</p></div>
+        ${list.length ? `<button class="btn primary" data-act="start-scope" data-scope="sj:${esc(s)}">${list.length}장 시작</button>` : ""}</div>
+      ${rowsHtml(list, { mode: "today", scope: "sj:" + s })}`;
+  }
+  if (sel === "st:sets") return mysetListHtml();
+  if (sel.startsWith("set:")) return mysetEditHtml(sel.slice(4));
 
   if (sel === "st:log") {
     const log = dailyLog();
@@ -1024,37 +1195,156 @@ function homeMainHtml() {
   if (k === "today") {
     const q = buildQueue("today");
     const line = q.length
-      ? `다시 볼 것 ${qc.relearn}장 · 복습 ${qc.review}장`
+      ? `다시 볼 것 ${qc.relearn}장 · 복습 ${qc.review}장 · 과목을 누르면 그 과목만 나와요`
       : "오늘 복습할 카드를 다 끝냈어요";
     return `<div class="mhead"><div><h2>오늘의 복습</h2>
         <p>${line}</p></div>
-        ${q.length ? `<button class="btn primary" data-act="start-scope" data-scope="">${q.length}장 시작</button>` : ""}</div>
-      ${rowsHtml(q.slice(0, 30))}
-      ${q.length > 30 ? `<p class="mt-more">아래로 ${q.length - 30}장 더</p>` : ""}`;
+        ${q.length ? `<button class="btn primary" data-act="start-scope" data-scope="">전체 ${q.length}장</button>` : ""}</div>
+      ${q.length ? subjCardsHtml(q) : `<p class="mt-empty">오늘 몫을 다 끝냈어요. '아직 안 함'에서 새 카드를 꺼내 보세요.</p>`}`;
   }
   if (k === "fresh") {
-    const list = scopedSubs().filter(x => x.st.status === "new");
+    const list = scopedSubs().filter(x => x.st.status === "new").filter(inReviewFlow);
     const b = newBudget();
     return `<div class="mhead"><div><h2>아직 안 함</h2>
         <p>${list.length}장 · 오늘 더 꺼낼 수 있는 건 ${b}장</p></div>
         ${b && list.length ? `<button class="btn primary" data-act="start-scope" data-scope="" data-mode="fresh">${Math.min(b, list.length)}장 시작</button>` : ""}</div>
-      ${rowsHtml(list.slice(0, 30))}
+      ${rowsHtml(list.slice(0, 30), { mode: "fresh", scope: "" })}
       ${list.length > 30 ? `<p class="mt-more">아래로 ${list.length - 30}장 더</p>` : ""}`;
   }
   if (k === "weak") {
-    const list = scopedSubs().filter(x => x.st.last && x.st.last.r !== "O");
+    const list = scopedSubs().filter(x => x.st.last && x.st.last.r !== "O").filter(inReviewFlow);
     return `<div class="mhead"><div><h2>틀린 것</h2><p>${list.length}장</p></div>
         ${list.length ? `<a class="btn" href="#wrong">오답 뽀개기</a>` : ""}</div>
-      ${rowsHtml(list.slice(0, 30))}
+      ${rowsHtml(list.slice(0, 30), { mode: "weak", scope: "" })}
       ${list.length > 30 ? `<p class="mt-more">아래로 ${list.length - 30}장 더</p>` : ""}`;
   }
   if (k === "chronic") {
-    const list = scopedSubs().filter(x => x.st.chronic);
+    const list = scopedSubs().filter(x => x.st.chronic).filter(inReviewFlow);
     return `<div class="mhead"><div><h2>고질 약점</h2><p>두 번 잇달아 몰랐던 카드 ${list.length}장</p></div>
         ${list.length ? `<button class="btn primary" data-act="start-chronic">${list.length}장 시작</button>` : ""}</div>
-      ${rowsHtml(list)}`;
+      ${rowsHtml(list, { mode: "chronic", scope: "" })}`;
   }
   return "";
+}
+
+/* ---------- 내 세트 화면 ----------
+   목록에서 만들고 지우고, 세트를 열어 카드를 넣는다. 자료 파일에서 온 세트는
+   여기서 숨기기만 한다 (지워도 다음 빌드에 되살아나므로 지우는 시늉을 하지 않는다). */
+let EDIT_CARD = null;                       // 지금 고치고 있는 카드 "세트id|카드번호"
+const KIND_KO = { ct: "표 빈칸형", ctx: "맥락형", sgi: "성취기준형", won: "원문", review: "복습", my: "내 세트" };
+function kindKo(set) { return KIND_KO[set.kind || (set.mode === "review" ? "review" : "")] || "기출"; }
+/* 정리 대상 = 자료 파일에서 온 세트 전부 (원문은 WON 에 따로 있다) */
+function packSets() { return [...ALL_SETS, ...WON.map(s => ({ ...s, kind: "won" }))]; }
+
+function mysetListHtml() {
+  const list = mysets();
+  const rows = list.map(s => `
+    <div class="mrow">
+      <span class="nm">${esc(s.title || "이름 없는 세트")}
+        <span class="tag">${esc(s.subject || "내 자료")}${isHidden(s.id) ? " · 숨김" : ""}</span></span>
+      <span class="cnt">${(s.items || []).length}장</span>
+      <button class="ibtn" data-act="set-open" data-id="${esc(s.id)}" title="세트 열기">${ico("pen")}</button>
+      <button class="ibtn" data-act="set-del" data-id="${esc(s.id)}" title="세트 삭제">${ico("x")}</button>
+    </div>`).join("");
+
+  const bySub = new Map();
+  for (const set of packSets()) {
+    if (!bySub.has(set.subject)) bySub.set(set.subject, []);
+    bySub.get(set.subject).push(set);
+  }
+  const hiddenN = packSets().filter(s => isHidden(s.id)).length;
+  const packs = [...bySub.entries()].map(([sub, sets]) => {
+    const hid = sets.filter(s => isHidden(s.id)).length;
+    return `<details class="setpack"${hid ? " open" : ""}>
+      <summary>${esc(sub)} <span class="cnt">${sets.length}</span>
+        ${hid ? `<span class="bdg warn">숨김 ${hid}</span>` : ""}</summary>
+      ${sets.map(s => `<div class="mrow">
+        <span class="nm">${esc(s.range || s.title)}<span class="tag">${esc(kindKo(s))}</span></span>
+        <button class="ck" data-act="set-hide" data-id="${esc(s.id)}"
+          aria-pressed="${isHidden(s.id) ? "true" : "false"}">${isHidden(s.id) ? "되살리기" : "숨기기"}</button>
+      </div>`).join("")}
+    </details>`;
+  }).join("");
+
+  return `<div class="mhead"><div><h2>내 세트</h2>
+      <p>내가 만든 세트 ${list.length}개 · 숨긴 자료 ${hiddenN}개</p></div>
+      <button class="btn primary" data-act="set-new">${ico("plus")} 새 세트</button></div>
+    ${rows || `<p class="mt-empty">아직 만든 세트가 없어요. '새 세트'를 누르면 물음과 답을 직접 넣을 수 있어요.</p>`}
+    <div class="cs-head cs-head2"><b>자료 정리</b><span>안 볼 세트는 숨겨 두세요. 기록은 그대로 남아요</span></div>
+    ${packs}`;
+}
+
+function mysetEditHtml(id) {
+  const set = mysetFind(id);
+  if (!set) return `<p class="mt-empty">세트를 찾을 수 없어요.</p>`;
+  const items = set.items || [];
+  const subjects = [...new Set(packSets().map(s => s.subject))];
+  return `<div class="mhead"><div>
+      <button class="btn ghost sm" data-act="home-go" data-sel="st:sets">${ico("back")} 내 세트</button>
+      <h2>${esc(set.title || "이름 없는 세트")}</h2>
+      <p>카드 ${items.length}장 · 형광펜으로 칠한 말이 채점 키워드예요</p></div>
+      <button class="btn" data-act="card-add" data-id="${esc(set.id)}">${ico("plus")} 카드</button></div>
+    <div class="setmeta">
+      <label>과목<input class="set-subj" list="subjlist" value="${esc(set.subject || "")}" placeholder="예: 사회"></label>
+      <label>세트 이름<input class="set-title" value="${esc(set.title || "")}" placeholder="예: 자꾸 헷갈리는 것"></label>
+      <button class="btn" data-act="set-save" data-id="${esc(set.id)}">저장</button>
+      <datalist id="subjlist">${subjects.map(s => `<option value="${esc(s)}">`).join("")}</datalist>
+    </div>
+    <div class="sethint">답 위에서 <b>드래그하거나 낱말을 톡</b> 누르면 형광펜이 칠해져요.
+      칠한 말이 채점 키워드예요. 칠한 곳을 다시 누르면 지워집니다.
+      하나도 안 칠하면 자동 채점 없이 모범답안만 보여 주고 본인이 판정해요.</div>
+    ${items.map(it => mysetCardHtml(set, it)).join("")
+      || `<p class="mt-empty">카드가 없어요. '+ 카드'로 물음을 하나 넣어 보세요.</p>`}`;
+}
+
+function mysetCardHtml(set, it) {
+  if (EDIT_CARD === set.id + "|" + it.no) {
+    return `<div class="setcard editing" data-id="${esc(set.id)}" data-no="${esc(it.no)}">
+      <textarea class="ce-q" rows="2" placeholder="물음 (앞면)">${esc(it.title || "")}</textarea>
+      <textarea class="ce-a" rows="5" placeholder="모범답안 (뒷면). 저장한 뒤 외울 말에 형광펜을 칠하세요">${esc(it.model || "")}</textarea>
+      <div class="qe-btns">
+        <button class="btn ghost" data-act="card-cancel">취소</button>
+        <button class="btn primary" data-act="card-save">저장</button>
+      </div></div>`;
+  }
+  const n = (it.k || []).length;
+  const rec = history(set.id + "|" + it.no + "|인출").length;
+  return `<div class="setcard" data-id="${esc(set.id)}" data-no="${esc(it.no)}">
+    <div class="sc-head"><span class="sc-q">${esc(it.title || "(물음 없음)")}</span>
+      <button class="ibtn" data-act="card-edit" title="물음·답 고치기">${ico("pen")}</button>
+      <button class="ibtn" data-act="card-del" title="카드 삭제">${ico("x")}</button></div>
+    <div class="myset-ans">${kwHtml(it)}</div>
+    <div class="sc-k">${n ? "채점 키워드 " + n + "개" : "키워드 없음 · 본인 판정"}${rec ? " · 복습 기록 " + rec + "건" : ""}</div>
+  </div>`;
+}
+
+/* ---------- 형광펜 자리 ----------
+   칠한 곳은 글자 위치가 아니라 **글자 그대로** 저장한다. 답을 고쳐도 같은 말이 남아
+   있으면 칠이 따라오고, 사라지면 저장할 때 같이 떨어진다. 같은 말이 두 번 나오면
+   둘 다 칠해진다 (채점은 어차피 '들어 있나'만 보므로 손해가 없다) */
+function kwRanges(text, ks) {
+  const out = [];
+  for (const w of ks || []) {
+    if (!w) continue;
+    let at = 0;
+    while ((at = text.indexOf(w, at)) >= 0) { out.push({ s: at, e: at + w.length, w }); at += w.length; }
+  }
+  out.sort((a, b) => a.s - b.s || b.e - a.e);
+  const keep = [];
+  for (const r of out) if (!keep.length || r.s >= keep[keep.length - 1].e) keep.push(r);
+  return keep;
+}
+function kwHtml(it) {
+  const text = it.model || "";
+  if (!text) return `<span class="sc-none">답이 비어 있어요. 연필을 눌러 채워 주세요</span>`;
+  let out = "", at = 0;
+  for (const r of kwRanges(text, it.k)) {
+    out += esc(text.slice(at, r.s));
+    out += `<mark class="wb" data-act="kw-drop" data-w="${esc(r.w)}" title="누르면 형광펜을 지워요">${esc(r.w)}</mark>`;
+    at = r.e;
+  }
+  out += esc(text.slice(at));
+  return out.replace(/\n/g, "<br>");
 }
 
 function renderHome() {
@@ -1802,6 +2092,7 @@ function wonBuild() {
   wonReanchor();
   for (let k = DATA.length - 1; k >= 0; k--) if (DATA[k].kind === "won") DATA.splice(k, 1);
   for (const set of WON) {
+    if (isHidden(set.id)) continue;
     /* 떼어 둔 빈칸(o)은 카드로 올리지 않는다. 기록은 남아 있고 원문 화면에서 따로 안내한다 */
     const mine = wonList().filter(b => b.q === set.id && !b.o);
     DATA.push({
@@ -1954,6 +2245,59 @@ function wonTapWord(x, y, target) {
   while (a > 0 && !WON_WORD_STOP.test(line[a - 1])) a--;
   while (b < line.length && !WON_WORD_STOP.test(line[b])) b++;
   wonAdd(p, a, b);
+}
+
+/* ---------- 형광펜: 고른 말을 채점 키워드로 ----------
+   원문 모드는 자리를 저장해야 해서 글자 수를 세지만, 여기는 **말 자체**가 열쇠라
+   고른 글자만 알면 된다. 그래서 훨씬 짧다. 드래그·낱말 탭·확인 막대 세 길은
+   원문 모드에서 쓰던 것을 그대로 쓴다 (iOS 는 mouseup 이 안 와서 길이 셋이어야 한다). */
+function kwCardOf(node) {
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  return el ? el.closest(".setcard") : null;
+}
+function kwInAns(node) {
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  return !!(el && el.closest(".myset-ans"));
+}
+function kwAdd(card, word) {
+  const w = (word || "").replace(/^[\s]+|[\s]+$/g, "");
+  const set = card && mysetFind(card.dataset.id);
+  const it = card && mysetItem(card.dataset.id, card.dataset.no);
+  if (!set || !it || !w) return;
+  if (!(it.model || "").includes(w)) { toast("답 안에 있는 말만 칠할 수 있어요"); return; }
+  if ((it.k || []).some(x => x === w || x.includes(w) || w.includes(x))) { toast("이미 칠한 말과 겹쳐요"); return; }
+  (it.k = it.k || []).push(w);
+  mysetTouch(set); renderHome();
+  toast("채점 키워드: " + w);
+}
+function kwPick(range) {
+  const sel = window.getSelection();
+  const rg = range || (sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null);
+  if (!rg) return;
+  const c1 = kwCardOf(rg.startContainer), c2 = kwCardOf(rg.endContainer);
+  const ok = c1 && c1 === c2 && kwInAns(rg.startContainer) && kwInAns(rg.endContainer);
+  const txt = rg.toString();
+  if (sel) sel.removeAllRanges();
+  if (ok) kwAdd(c1, txt);
+}
+/* 낱말 하나를 톡 누르면 그 낱말이 키워드. 칠한 자리(<mark>)는 지우기가 먼저다 */
+function kwTapWord(x, y, target) {
+  if (!target || !target.closest || (!x && !y)) return;
+  if (target.closest("mark, button, a, textarea, input")) return;
+  const body = target.closest(".myset-ans");
+  if (!body) return;
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  const cr = wonCaretAt(x, y);
+  if (!cr || !body.contains(cr.startContainer) || cr.startContainer.nodeType !== 3) return;
+  const t = cr.startContainer.nodeValue || "";
+  let at = cr.startOffset;
+  if (at >= t.length || WON_WORD_STOP.test(t[at])) at--;
+  if (at < 0 || WON_WORD_STOP.test(t[at])) return;
+  let a = at, b = at + 1;
+  while (a > 0 && !WON_WORD_STOP.test(t[a - 1])) a--;
+  while (b < t.length && !WON_WORD_STOP.test(t[b])) b++;
+  kwAdd(body.closest(".setcard"), t.slice(a, b));
 }
 
 function wonDrop(card, i, s) {
@@ -3273,6 +3617,128 @@ function onAppClick(e) {
     renderWrong();
     return;
   }
+  /* ---------- 줄 하나를 눌러 바로 시작 ----------
+     "N장 시작"을 안 눌러도 눈에 걸린 카드부터 풀 수 있게. 큐는 그대로 두고
+     누른 카드만 맨 앞으로 당긴다 (그 한 장만 풀고 끝나면 흐름이 끊긴다) */
+  if (act === "start-one") {
+    const sid = btn.dataset.sid;
+    const mode = btn.dataset.mode || "today";
+    const scope = btn.dataset.scope || null;
+    let queue = buildQueue(mode, scope);
+    const i = queue.findIndex(x => x.id === sid);
+    if (i > 0) queue = [queue[i], ...queue.slice(0, i), ...queue.slice(i + 1)];
+    else if (i < 0) {
+      const one = allSubs().find(x => x.id === sid);
+      if (!one) return;
+      queue = [{ ...one, st: subState(one.id) }];
+    }
+    SESSION = { queue, scope, mode, idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+    if (location.hash === "#today") renderSession(); else location.hash = "#today";
+    return;
+  }
+
+  /* ---------- 내 세트 ---------- */
+  if (act === "set-new") {
+    const s = { id: mysetNewId(), subject: "내 자료", title: "새 세트", items: [], seq: 0, ts: Date.now() };
+    mysets().push(s);
+    persist(); mysetBuild();
+    EDIT_CARD = null;
+    HOME_SEL = "set:" + s.id; HOME_VIEW = "detail"; renderHome();
+    return;
+  }
+  if (act === "set-open") {
+    EDIT_CARD = null;
+    HOME_SEL = "set:" + btn.dataset.id; HOME_VIEW = "detail"; renderHome();
+    return;
+  }
+  if (act === "set-save") {
+    const set = mysetFind(btn.dataset.id);
+    const pane = btn.closest(".setmeta");
+    if (!set || !pane) return;
+    set.subject = pane.querySelector(".set-subj").value.trim() || "내 자료";
+    set.title = pane.querySelector(".set-title").value.trim() || "새 세트";
+    mysetTouch(set);
+    renderHome();
+    toast("세트를 저장했어요");
+    return;
+  }
+  if (act === "set-del") {
+    const set = mysetFind(btn.dataset.id);
+    if (!set) return;
+    const n = (set.items || []).length;
+    if (!confirm(`'${set.title}' 세트를 지울까요? 카드 ${n}장이 없어져요.
+복습 기록은 지우지 않고 남겨 둡니다.`)) return;
+    mysets().splice(mysets().indexOf(set), 1);
+    /* 무덤을 남긴다. 안 그러면 다른 기기가 들고 있던 사본이 다음 동기화에 되살아난다 */
+    (S.setsDel = S.setsDel || {})[set.id] = Date.now();
+    persist(); mysetBuild();
+    HOME_SEL = "st:sets"; renderHome();
+    return;
+  }
+  if (act === "set-hide") { setHidden(btn.dataset.id, !isHidden(btn.dataset.id)); renderHome(); return; }
+  if (act === "card-add") {
+    const set = mysetFind(btn.dataset.id);
+    if (!set) return;
+    set.seq = (set.seq || 0) + 1;                 // 번호는 늘기만 한다 (지운 번호는 다시 안 쓴다)
+    const it = { no: "c" + set.seq, title: "", model: "", k: [] };
+    (set.items = set.items || []).push(it);
+    EDIT_CARD = set.id + "|" + it.no;
+    mysetTouch(set); renderHome();
+    const ta = document.querySelector(".setcard.editing .ce-q");
+    if (ta) ta.focus();
+    return;
+  }
+  if (act === "card-edit") {
+    const c = btn.closest(".setcard");
+    EDIT_CARD = c.dataset.id + "|" + c.dataset.no;
+    renderHome();
+    return;
+  }
+  if (act === "card-cancel") {
+    const c = btn.closest(".setcard");
+    const set = mysetFind(c.dataset.id);
+    const it = mysetItem(c.dataset.id, c.dataset.no);
+    /* 방금 만든 빈 카드를 취소한 것이면 남길 이유가 없다 */
+    if (set && it && !it.title && !it.model) { set.items.splice(set.items.indexOf(it), 1); mysetTouch(set); }
+    EDIT_CARD = null; renderHome();
+    return;
+  }
+  if (act === "card-save") {
+    const c = btn.closest(".setcard");
+    const set = mysetFind(c.dataset.id);
+    const it = mysetItem(c.dataset.id, c.dataset.no);
+    if (!set || !it) return;
+    const q = c.querySelector(".ce-q").value.trim();
+    const a = c.querySelector(".ce-a").value.replace(/\s+$/, "");
+    if (!q) { alert("물음을 써 주세요."); return; }
+    it.title = q; it.model = a;
+    it.k = (it.k || []).filter(w => a.includes(w));   // 답에서 사라진 말은 형광펜도 뗀다
+    EDIT_CARD = null;
+    mysetTouch(set); renderHome();
+    return;
+  }
+  if (act === "card-del") {
+    const c = btn.closest(".setcard");
+    const set = mysetFind(c.dataset.id);
+    const it = mysetItem(c.dataset.id, c.dataset.no);
+    if (!set || !it) return;
+    const n = history(set.id + "|" + it.no + "|인출").length;
+    if (!confirm(n ? `이 카드를 지울까요? 복습 기록 ${n}건은 남겨 둡니다.` : "이 카드를 지울까요?")) return;
+    set.items.splice(set.items.indexOf(it), 1);
+    if (EDIT_CARD === set.id + "|" + it.no) EDIT_CARD = null;
+    mysetTouch(set); renderHome();
+    return;
+  }
+  if (act === "kw-drop") {
+    const c = btn.closest(".setcard");
+    const set = mysetFind(c.dataset.id);
+    const it = mysetItem(c.dataset.id, c.dataset.no);
+    if (!set || !it) return;
+    it.k = (it.k || []).filter(w => w !== btn.dataset.w);
+    mysetTouch(set); renderHome();
+    return;
+  }
+
   if (act === "crush-resume") { CRUSH = loadCrush(); if (CRUSH) location.hash = "#crush"; return; }
   if (act === "crush-quit") { CRUSH = null; return; /* 진행 상태는 저장돼 있고 href="#wrong"가 라우팅 */ }
   if (act === "won-edit") {
@@ -3714,7 +4180,11 @@ function render() {
   else { SESSION = null; renderHome(); }
 }
 window.addEventListener("hashchange", render);
-document.addEventListener("mouseup", e => { if (e.target.closest(".won-body")) wonPick(); });
+document.addEventListener("mouseup", e => {
+  if (!e.target || !e.target.closest) return;
+  if (e.target.closest(".won-body")) wonPick();
+  else if (e.target.closest(".myset-ans")) kwPick();
+});
 
 /* ---------- 아이패드·아이폰에서 빈칸 뚫기 ----------
    iOS 는 손가락으로 글자를 고를 때 **mouseup 을 보내지 않는다.** 선택 손잡이를 끄는
@@ -3732,7 +4202,7 @@ document.addEventListener("mouseup", e => { if (e.target.closest(".won-body")) w
    ⚠️ 막대를 고른 글자 옆에 붙이면 안 된다. 애플의 선택 메뉴(복사·조회)가 바로 그 자리에
    뜨는데 그것이 페이지 위에 그려져서, 우리 단추는 그 아래에 깔려 보이지 않는다.
    그래서 **화면 아래에 고정**한다. 덮일 일이 없고 엄지로 누르기도 쉽다. */
-let WON_SEL_T = 0, WON_SEL_RANGE = null;
+let WON_SEL_T = 0, WON_SEL_RANGE = null, PICK_MODE = "won";
 function wonSelBtn() {
   let el = document.querySelector(".wonpick");
   if (!el) {
@@ -3743,7 +4213,7 @@ function wonSelBtn() {
     el.addEventListener("pointerdown", ev => {
       ev.preventDefault();
       ev.stopPropagation();
-      wonPick(WON_SEL_RANGE);
+      if (PICK_MODE === "kw") kwPick(WON_SEL_RANGE); else wonPick(WON_SEL_RANGE);
       wonSelHide();
     });
     document.body.appendChild(el);
@@ -3757,7 +4227,21 @@ function wonSelHide() {
 }
 function wonSelShow() {
   const sel = window.getSelection();
-  if (!WON_EDIT || !sel || sel.isCollapsed || !sel.rangeCount) return wonSelHide();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return wonSelHide();
+  /* 내 세트 편집 화면: 고른 말을 채점 키워드로 */
+  const c1 = kwCardOf(sel.anchorNode), c2 = kwCardOf(sel.focusNode);
+  if (c1 && c1 === c2 && kwInAns(sel.anchorNode) && kwInAns(sel.focusNode)) {
+    const t = sel.toString().trim();
+    if (!t) return wonSelHide();
+    PICK_MODE = "kw";
+    WON_SEL_RANGE = sel.getRangeAt(0).cloneRange();
+    const b = wonSelBtn();
+    b.innerHTML = '<b>' + esc(t.length > 24 ? t.slice(0, 24) + "…" : t) + '</b> 형광펜으로 칠하기';
+    b.classList.add("show");
+    return;
+  }
+  PICK_MODE = "won";
+  if (!WON_EDIT) return wonSelHide();
   const p = wonPara(sel.anchorNode), p2 = wonPara(sel.focusNode);
   // 두 줄에 걸친 선택은 어차피 안 받으므로 막대도 띄우지 않는다
   if (!p || p !== p2 || !p.closest(".won-body")) return wonSelHide();
@@ -3775,12 +4259,15 @@ document.addEventListener("selectionchange", () => {
 });
 /* 손가락을 뗀 직후에도 한 번 살펴본다. selectionchange 만 믿기에는 기기마다 다르다 */
 document.addEventListener("touchend", e => {
-  if (!WON_EDIT || !e.target || !e.target.closest || !e.target.closest(".won-body")) return;
+  if (!e.target || !e.target.closest) return;
+  const inKw = !!e.target.closest(".myset-ans");
+  if (!inKw && (!WON_EDIT || !e.target.closest(".won-body"))) return;
   clearTimeout(WON_SEL_T);
   WON_SEL_T = setTimeout(wonSelShow, 120);
 }, { passive: true });
 /* 낱말 하나를 톡 누르면 그 낱말이 빈칸 (손가락으로 가장 확실한 길) */
 document.addEventListener("click", e => {
+  kwTapWord(e.clientX, e.clientY, e.target);
   if (!WON_EDIT) return;
   wonTapWord(e.clientX, e.clientY, e.target);
 });
@@ -3826,7 +4313,7 @@ document.addEventListener("visibilitychange", () => {
   await handleAuthReturn(); // 매직링크로 돌아온 경우 계정 키로 교체
   /* 첫 그리기 **전에** 원문 묶음을 DATA 에 올린다. 안 그러면 원문 모드 주소로 바로
      들어왔을 때 그런 묶음이 없다고 보고 홈으로 튕긴다 (동기화는 그 뒤에 온다) */
-  wonBuild();
+  rebuildData();   // 숨긴 세트를 빼고 원문·내 세트를 올린다
   render();
   if (!syncKey()) makeSyncKey();
   pullAndMerge();
