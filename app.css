@@ -4,6 +4,12 @@
   src: url("fonts/87MMILSANG-Regular.woff2") format("woff2");
   font-weight: 400; font-style: normal; font-display: swap;
 }
+/* 배너 '암기PT' 로고 (서울알림체 · 서울시청 · 웹폰트·임베딩 허용) */
+@font-face {
+  font-family: "SeoulAlrim";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/2505-1@1.0/SeoulAlrimTTF-ExtraBold.woff2") format("woff2");
+  font-weight: 800; font-style: normal; font-display: swap;
+}
 @font-face {
   font-family: "HsSummerWaterLight";
   src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_one@1.0/HSSummer.woff") format("woff");
@@ -107,8 +113,8 @@ body[data-screen="home"] #app { max-width: 1120px; padding-top: 20px; }
 .backrow { display: none; }
 
 .sbrand { padding: 0 16px 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-.sbrand h1 { font-family: "HsSummerWaterLight", "87MM일상", Batang, serif;
-  font-size: 1.34rem; font-weight: normal; letter-spacing: .08em; color: var(--ink); line-height: 1.2; }
+.sbrand h1 { font-family: "SeoulAlrim", "87MM일상", sans-serif;
+  font-size: 1.34rem; font-weight: 800; letter-spacing: .01em; color: var(--ink); line-height: 1.25; }
 .sbrand p { color: var(--sub); font-size: .68rem; margin-top: 1px; }
 .sgroup { padding: 12px 0 4px; }
 .sgroup + .sgroup { border-top: 1px solid var(--line); margin-top: 5px; }
