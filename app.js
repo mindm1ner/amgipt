@@ -1071,13 +1071,13 @@ function todaySubjects(queue) {
   }
   return [...out.entries()].sort((a, b) => b[1].relearn - a[1].relearn || b[1].n - a[1].n);
 }
+/* 카드에는 과목 이름만 둔다. 몇 장인지를 같이 찍으면 고르기 전에 "많다/적다"부터
+   재게 되고, 그 셈은 시작 단추의 '전체 N장' 하나로 족하다.
+   장수는 안 보여도 **차례는 다시 볼 것이 많은 과목부터**다 (todaySubjects) */
 function subjCardsHtml(queue) {
-  return `<div class="subjcards">${todaySubjects(queue).map(([s, o]) => `
+  return `<div class="subjcards">${todaySubjects(queue).map(([s]) => `
     <button class="sjcard" data-act="home-go" data-sel="today:${esc(s)}">
       <span class="sj-n">${esc(s)}</span>
-      <span class="sj-c">${o.n}장</span>
-      <span class="sj-m">${o.relearn ? `<i class="x">다시 ${o.relearn}</i>` : ""}${
-        o.review ? `<i class="o">복습 ${o.review}</i>` : ""}</span>
     </button>`).join("")}</div>`;
 }
 
@@ -1209,7 +1209,7 @@ function homeMainHtml() {
   if (k === "today") {
     const q = buildQueue("today");
     const line = q.length
-      ? `다시 볼 것 ${qc.relearn}장 · 복습 ${qc.review}장 · 과목을 누르면 그 과목만 나와요`
+      ? "과목을 누르면 그 과목만 나와요"
       : "오늘 복습할 카드를 다 끝냈어요";
     return `<div class="mhead"><div><h2>오늘의 복습</h2>
         <p>${line}</p></div>

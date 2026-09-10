@@ -946,19 +946,13 @@ table.ctt-sinche th .ctin { min-width: 54px; }
    과목을 먼저 고르고, 그 안에서 줄을 눌러 바로 시작한다 */
 .subjcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: 10px; margin-top: 4px; }
-.sjcard { display: flex; flex-direction: column; gap: 3px; text-align: left;
-  font: inherit; color: inherit; cursor: pointer;
+.sjcard { display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 66px; font: inherit; color: inherit; cursor: pointer;
   background: var(--card); border: 1px solid var(--line); border-radius: 13px;
-  padding: 13px 15px; transition: border-color .13s, transform .08s; }
+  padding: 14px 15px; transition: border-color .13s, transform .08s; }
 .sjcard:hover { border-color: var(--accent); }
 .sjcard:active { transform: scale(.99); }
-.sj-n { font-size: .95rem; font-weight: 700; }
-.sj-c { font-size: 1.3rem; line-height: 1.15; font-weight: normal;
-  font-family: "HsSummerWaterLight", Batang, serif; font-variant-numeric: tabular-nums; }
-.sj-m { display: flex; gap: 8px; font-size: .7rem; font-style: normal; }
-.sj-m i { font-style: normal; font-weight: 700; }
-.sj-m i.x { color: var(--no); }
-.sj-m i.o { color: var(--sub); }
+.sj-n { font-size: .95rem; font-weight: 700; letter-spacing: .01em; }
 
 /* ---------- 내 세트 ----------
    앱 안에서 만드는 자료. 물음·모범답안을 쓰고, 답 위에 형광펜을 칠하면 그 말이 채점 키워드 */
