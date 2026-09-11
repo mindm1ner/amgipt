@@ -3196,7 +3196,8 @@ function renderCheckpoint(finished) {
 /* ---------- AI 채점(의미 판정) ----------
    역할 분담: 판정 결과의 합산(O/△/X)은 언제나 고정 코드(suggestFrom).
    AI는 "문자 일치에 실패한 키워드가 의미상으로는 들어 있는가"라는 해석만 맡는다. */
-async function aiJudgeKeywords(topic, model, names, matched, input, question) {
+/* extra = 요청에 덧붙일 필드 (집중 인출이면 { scope: "focus", questions }) */
+async function aiJudgeKeywords(topic, model, names, matched, input, question, extra) {
   let res;
   try {
     res = await fetch(AI_FN_URL, {
@@ -3206,7 +3207,7 @@ async function aiJudgeKeywords(topic, model, names, matched, input, question) {
         apikey: AI_FN_KEY,
         Authorization: "Bearer " + AI_FN_KEY
       },
-      body: JSON.stringify({ type: "grade_keywords", topic, model, names, matched, answer: input, ...(question ? { question } : {}) })
+      body: JSON.stringify({ type: "grade_keywords", topic, model, names, matched, answer: input, ...(question ? { question } : {}), ...(extra || {}) })
     });
   } catch {
     throw new Error("서버 연결 안 됨. amgipt-grade 함수 배포와 Verify JWT 끄기를 확인");
@@ -3222,17 +3223,26 @@ async function aiJudgeKeywords(topic, model, names, matched, input, question) {
 
 async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
   const statusEl = () => subEl.querySelector(".ai-status");
+  /* 집중 인출은 지난번 놓친 포인트만 물었다. 모범답안의 나머지는 이번에 묻지 않았으니
+     키워드 밖 결손으로 잡으면 안 되고, 다음 재질문도 이번에 물은 것 안에서만 나와야 한다.
+     안 그러면 묻지도 않은 것을 틀렸다고 하고, 그것이 다음 질문 목록으로 불어난다 */
+  const focus = subEl.dataset.focus === "1";
+  const last = focus ? latest(subEl.dataset.sid) : null;
+  // 질문별 답변 칸 모드면 groups[i] 가 재질문 rqs[i] 와 짝이다 (showReveal 이 같은 순서로 만든다)
+  const rqs = focus && subEl.querySelector("textarea.answer[data-fq]") && last && Array.isArray(last.rq) ? last.rq : null;
   try {
     // v3: 전체 요소를 보내 문자 인정분까지 근거를 확인하고, 키워드 밖 결손 + 재질문을 받는다
     const data = await aiJudgeKeywords(
       topic, model,
       groups.map(g => g.name),
       literalFlags.map((f, i) => f ? groups[i].name : null).filter(Boolean),
-      input);
+      input, "",
+      focus ? { scope: "focus", ...(rqs ? { questions: rqs.map(r => r.q || "") } : {}) } : null);
     const results = data.results || [];
     const byName = new Map(results.map(r => [r.name, r]));
     const flags = literalFlags.slice();
     const notes = [];
+    let partialN = 0;
     groups.forEach((g, gi) => {
       const r = byName.get(g.name) || results[gi];
       if (!r) return;
@@ -3254,6 +3264,7 @@ async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
           if (r.evidence) chip.title = "근거: " + r.evidence;
         }
       } else if (verdict === "partial") {
+        partialN++;
         if (chip) {
           chip.classList.remove("miss");
           chip.classList.add("part");
@@ -3266,25 +3277,42 @@ async function runAiJudge(subEl, topic, model, groups, input, literalFlags) {
         if (r.note) notes.push({ mark: "✗", nm, note: r.note });
       }
     });
-    // 키워드 밖 결손: 단권화 원문에는 있는데 채점 요소에도, 답안에도 없는 내용
-    for (const gp of (data.gaps || []).slice(0, 3)) {
+    // 키워드 밖 결손: 단권화 원문에는 있는데 채점 요소에도, 답안에도 없는 내용 (집중 인출은 묻지 않았으니 뺀다)
+    for (const gp of (focus ? [] : data.gaps || []).slice(0, 3)) {
       if (gp && gp.point) notes.push({ mark: "✗", nm: gp.point + " (키워드 밖)", note: gp.note || "" });
     }
     // AI가 놓친 것마다 하나씩 만든 재질문 + 그 질문의 채점 키워드: 판정 확정 시 기록에 저장되어
     // 다음 집중 인출의 문제 목록이자 채점 그룹이 된다
-    const retry = (Array.isArray(data.retry) ? data.retry : [])
+    let retry = (Array.isArray(data.retry) ? data.retry : [])
       .filter(r => r && r.q).map(r => ({
         n: r.target || "",
         q: r.q,
         k: Array.isArray(r.kw) ? r.kw.filter(x => typeof x === "string" && x.trim()).slice(0, 6) : []
       }))
       .concat(!Array.isArray(data.retry) && data.retry_question ? [{ n: "", q: data.retry_question, k: [] }] : []);
+    if (focus) {
+      const asked = new Set(groups.map(g => g.name));
+      retry = retry.filter(r => asked.has(r.n));
+      // 못 맞힌 질문에 AI 재질문이 안 붙었으면(이름을 바꿔 적는 등) 그 질문을 그대로 다시 낸다
+      if (rqs) groups.forEach((g, i) => {
+        if (!flags[i] && rqs[i] && !retry.some(r => r.n === g.name)) retry.push(rqs[i]);
+      });
+    }
     if (retry.length) subEl.dataset.rq = JSON.stringify(retry);
+    /* 옛 서버(v6 이하)는 범위를 몰라서 총평에 묻지 않은 내용을 결손으로 적는다.
+       응답에 scope 가 없으면 총평을 판정 칩에서 바로 세어 쓴다 */
+    let summary = data.summary || "판정을 마쳤어요.";
+    if (focus && data.scope !== "focus") {
+      const goodN = flags.filter(Boolean).length, missN = groups.length - goodN - partialN;
+      summary = `이번에 물은 ${groups.length}개 중 ${goodN}개를 정확히 인출했어요.` +
+        (partialN ? ` ${partialN}개는 절반만 왔어요.` : "") +
+        (missN ? ` ${missN}개는 아직 비어 있어요.` : "");
+    }
     const s = statusEl();
     if (s) {
       s.classList.add("ai-diag");
       s.innerHTML =
-        `<div class="diag-sum">${ico("spark")} <b>AI 진단</b> ${esc(data.summary || "판정을 마쳤어요.")}</div>` +
+        `<div class="diag-sum">${ico("spark")} <b>AI 진단</b> ${esc(summary)}</div>` +
         notes.map(n => `<div class="dnote"><span class="${n.mark === "△" ? "dm-part" : "dm-miss"}">${n.mark}</span> <b>${esc(n.nm)}</b> ${esc(n.note)}</div>`).join("") +
         (retry.length ? `<div class="dnote next-q"><b>다음 복습 질문</b><ol class="nq-list">${retry.map(r => `<li>${esc(r.q)}</li>`).join("")}</ol></div>` : "");
     }
