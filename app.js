@@ -608,7 +608,8 @@ function spread(list) {
    그래서 내체표는 맥락형(ctx)·성취기준형(sgi)만 복습으로 돌리고, 표(ct)는 표 화면에서
    직접 푼다. 기록·오답 목록·형광펜 표는 그대로다 — 빠지는 건 큐뿐이다.
    총론·창체는 표 꼴을 빌렸을 뿐 조항 글이라 문장 자체가 단서다. 그래서 안 뺀다. */
-const CT_TABLE_ONLY = new Set(["ct-체육-신체활동"]);   // 과목이 '내체표'가 아닌 표
+/* 실과 영역·핵심 개념표도 같다. 대영역 칸과 옆 영역이 보여야 답이 골라진다 */
+const CT_TABLE_ONLY = new Set(["ct-체육-신체활동", "ct-실과-영역"]);   // 과목이 '내체표'가 아닌 표
 function inReviewFlow(x) {
   if (x.quiz.kind !== "ct") return true;
   return !(x.quiz.subject === "내체표" || CT_TABLE_ONLY.has(x.quiz.id));

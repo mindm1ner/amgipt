@@ -636,13 +636,21 @@ table.ctt-cue th.ctsub { width: 38%; font-size: .78rem; color: var(--ink); line-
    표가 화면 밖으로 나가 가로로 밀어야 한다. 폭을 못 박아 예시 칸에 자리를 준다.
    ⚠️ table-layout:fixed 에서 폭을 정하는 건 **첫 줄**, 곧 thead 다. 본문 th 에 적으면
       무시되고 세 칸이 똑같이 3등분된다 */
-table.ctt-sinche { table-layout: fixed; }
+table.ctt-sinche, table.ctt-silgwa { table-layout: fixed; }
 table.ctt-sinche thead th:nth-child(1) { width: 78px; }
 table.ctt-sinche thead th:nth-child(2) { width: 132px; }
-table.ctt-sinche th.ctcat { white-space: normal; vertical-align: middle; }
-table.ctt-sinche th.ctsub { color: var(--ink); line-height: 1.45; }
-table.ctt-sinche th .ctb { margin-bottom: 0; }
-table.ctt-sinche th .ctin { min-width: 54px; }
+table.ctt-sinche th.ctcat, table.ctt-silgwa th.ctcat { white-space: normal; vertical-align: middle; }
+table.ctt-sinche th.ctsub, table.ctt-silgwa th.ctsub { color: var(--ink); line-height: 1.45; }
+table.ctt-sinche th .ctb, table.ctt-silgwa th .ctb { margin-bottom: 0; }
+table.ctt-sinche th .ctin, table.ctt-silgwa th .ctin { min-width: 54px; }
+/* 실과 영역·핵심 개념표 — 대영역은 두 글자(가정·기술)라 좁게, 영역 이름은
+   '생활환경과 지속가능한 선택'처럼 길어서 입력칸이 한 줄에 들어갈 만큼 넓게 */
+table.ctt-silgwa thead th:nth-child(1) { width: 58px; }
+table.ctt-silgwa thead th:nth-child(2) { width: 42%; }
+/* 칸이 셋뿐이고 답이 짧아 폰 폭에도 들어간다. 표 공통 최소폭(520px)을 풀어 옆으로 안 밀리게.
+   영역 입력칸은 핵심 개념 다섯 줄 높이의 가운데에 둔다 (위에 붙으면 아래가 텅 빈다) */
+table.ctt-silgwa { min-width: 0; }
+table.ctt-silgwa th.ctsub { vertical-align: middle; }
 /* 괄호 안 활동도 답이다. 어느 예시에 딸린 것인지가 보여야 하므로 예시 이름 아래에
    한 겹 들여 상자로 묶는다. 상자를 안 씌우면 빈칸 스무 개가 한 칸에 쏟아져
    어디까지가 '이동 움직임'의 것인지 알 수가 없다 */
@@ -714,6 +722,7 @@ table.ctt-sinche th .ctin { min-width: 54px; }
   table.ctt-sinche thead th:nth-child(1) { width: 62px; }
   table.ctt-sinche thead th:nth-child(2) { width: 104px; }
   table.ctt-sinche th.ctsub { font-size: .72rem; }
+  table.ctt-silgwa thead th:nth-child(1) { width: 44px; }
   .ctin { font-size: .76rem; min-width: 70px; }
 }
 
