@@ -542,7 +542,11 @@ function allSubs() {
   }
   return out;
 }
-const NEW_PER_DAY = 10;
+/* 새 카드 하루 배정 상한. Infinity = 상한 없음(2026-09-16).
+   원래는 10장이었다. 진도가 몰릴 때 카드가 한꺼번에 쏟아지지 않게 한 장치인데,
+   통합교과처럼 한 번에 수백 장이 들어오면 "다 들어오는 데 2주"가 오히려 걸림돌이 됐다.
+   다시 조이고 싶으면 이 숫자만 바꾸면 된다(복습분은 상한과 무관하게 늘 전부 나온다). */
+const NEW_PER_DAY = Infinity;
 
 /* 범위(scope): 무엇을 도는가. null이면 전부.
    "sj:사회" = 과목 하나 · "ar:사회|정치" = 영역 하나.
@@ -562,14 +566,17 @@ function scopedSubs(scope) {
   return allSubs().filter(x => inScope(x, scope)).map(x => ({ ...x, st: subState(x.id) }));
 }
 /* 오늘 처음 꺼낸 카드 수. 첫 기록이 오늘이면 오늘 들어온 카드다.
-   범위별로 세션을 돌아도 신규 배정은 하루 전체에서 10장이라는 뜻 (범위마다 10장이 아니다). */
+   상한을 다시 걸 때 이 수를 하루 전체에서 센다는 뜻이다 (범위마다 따로 세지 않는다). */
 function newIntroducedToday() {
   const t = todayStr();
   let n = 0;
   for (const h of Object.values(S.records)) if (h.length && h[0].d === t) n++;
   return n;
 }
-function newBudget() { return Math.max(0, NEW_PER_DAY - newIntroducedToday()); }
+function newBudget() {
+  if (!Number.isFinite(NEW_PER_DAY)) return Infinity;   // 상한 없음
+  return Math.max(0, NEW_PER_DAY - newIntroducedToday());
+}
 
 /* ---------- 섞기 ----------
    문서 순서 그대로 내면 앞 카드가 다음 답을 일러 준다. 내체표는 한 칸의 항목들이
@@ -1221,7 +1228,7 @@ function homeMainHtml() {
     const list = scopedSubs().filter(x => x.st.status === "new").filter(inReviewFlow);
     const b = newBudget();
     return `<div class="mhead"><div><h2>아직 안 함</h2>
-        <p>${list.length}장 · 오늘 더 꺼낼 수 있는 건 ${b}장</p></div>
+        <p>${list.length}장${Number.isFinite(b) ? ` · 오늘 더 꺼낼 수 있는 건 ${b}장` : ""}</p></div>
         ${b && list.length ? `<button class="btn primary" data-act="start-scope" data-scope="" data-mode="fresh">${Math.min(b, list.length)}장 시작</button>` : ""}</div>
       ${rowsHtml(list.slice(0, 30), { mode: "fresh", scope: "" })}
       ${list.length > 30 ? `<p class="mt-more">아래로 ${list.length - 30}장 더</p>` : ""}`;
@@ -2536,7 +2543,67 @@ function wonHeatHtml(quiz) {
     </div>${cards}`;
 }
 
-/* 빈칸 하나의 시도 이력. 원문에는 혼동한 '칸'이 없어서(자리가 곧 줄이다) 짝 표시는 넣지 않는다 */
+/* ---------- 카드형 형광펜 보기 (누적 약점) ----------
+   내체표는 표 위에, 원문은 글 위에 칠했다. 카드형(성취기준형·기출·단권화)은 칠할 바탕이 없어서
+   **카드 목록 자체를 칠한다.** 진하기 = 지금까지 틀린 횟수(ctHeat와 같은 3단계, 마지막에 맞혀도 안 빠진다).
+   여기서 곧바로 "자주 틀린 것끼리" 한 바퀴를 열 수 있다 — 내체표의 '자주 틀린 칸만 빈칸'과 같은 거르개다. */
+function cardMin(quiz) {
+  const v = S.cardMin && S.cardMin[quiz.id];
+  return typeof v === "number" ? v : 0;
+}
+function setCardMin(id, n) { S.cardMin = S.cardMin || {}; S.cardMin[id] = n; persist(); }
+
+function cardHeatItems(quiz) {
+  const out = [];
+  for (const q of quiz.questions) {
+    for (const sub of q.subs) {
+      const id = subId(quiz, q, sub);
+      const nm = sub.sn ? `${q.title} · ${sub.sn}`
+        : (sub.hideHead ? q.title : `${q.title} · ${sub.no}`);
+      out.push({ id, name: nm, ...ctHeat(id) });
+    }
+  }
+  return out;
+}
+function cardMinCount(quiz, n) { return cardHeatItems(quiz).filter(x => !n || x.w >= n).length; }
+
+function cardHeatHtml(quiz) {
+  const items = cardHeatItems(quiz);
+  const min = cardMin(quiz);
+  const shown = items.filter(x => !min || x.w >= min).sort((a, b) => b.w - a.w);
+  const wrongN = items.filter(x => x.w).length;
+  const rows = shown.length
+    ? shown.map(x => `<button type="button" class="hcell${x.lv ? " h" + x.lv : x.tried ? "" : " fresh"}"
+        data-act="card-heat" data-sid="${esc(x.id)}" data-name="${esc(x.name)}"
+        title="${esc(!x.tried ? "아직 안 푼 카드" : !x.w ? "틀린 적 없어요" : x.w + "번 틀렸어요")}"
+        >${esc(x.name)}${x.w ? `<span class="hn">${x.w}</span>` : ""}</button>`).join("")
+    : `<p class="mt-empty">${min}번 이상 틀린 카드가 아직 없어요. 단계를 낮춰 보세요.</p>`;
+  return `<div class="heat-lgd">
+      <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>
+      <span><i class="h3"></i>3번 이상 틀린 카드</span>
+      <span class="hl-note">카드를 누르면 그때 쓴 답이 나와요</span>
+    </div>
+    <div class="ctscope">
+      <div class="cs-head"><b>자주 틀린 것끼리</b>
+        <span>고른 만큼 틀린 카드만 모아 한 바퀴 돌아요 · 이 묶음에 저장돼요</span></div>
+      <div class="cs-row">${WON_MIN_STEPS.map(([n, label]) => `
+        <button class="ck" data-act="card-min" data-min="${n}"
+          aria-pressed="${min === n}">${label}<span class="n">${cardMinCount(quiz, n)}</span></button>`).join("")}</div>
+      <div class="cs-row">
+        <button class="btn primary" data-act="card-drill"${shown.length ? "" : " disabled"}
+          >${shown.length}장으로 한 바퀴</button>
+      </div>
+    </div>
+    <section class="q-card card-heat" data-quiz="${esc(quiz.id)}">
+      <div class="q-head"><span class="qno">${esc(quiz.title)}</span>
+        <span class="qpts">${wrongN ? `틀린 카드 ${wrongN}` : "깨끗"}</span></div>
+      <div class="chl">${rows}</div>
+      <div class="heat-detail"></div>
+    </section>`;
+}
+
+/* 빈칸 하나의 시도 이력. 원문에는 혼동한 '칸'이 없어서(자리가 곧 줄이다) 짝 표시는 넣지 않는다.
+   카드형 형광펜 보기도 같은 패널을 쓴다(물음 이름 + 그때 쓴 답) */
 function wonHeatDetailHtml(ans, id) {
   const h = history(id);
   const head = `<div class="hd-head"><div><b class="hd-ans">${esc(ans)}</b></div>
@@ -2995,11 +3062,13 @@ function renderQuiz(quizId, weakOnly, heat) {
   if (!quiz) { location.hash = ""; return; }
 
   /* 표로 보기: 같은 표를 풀지 않고 누적 약점만 얹어서 본다. 표 있는 묶음에서만 켜진다 */
-  /* 원문 모드도 같은 자리에 붙인다. 표 대신 글 위에 칠하는 것만 다르다 */
-  const canHeat = quiz.kind === "ct" || quiz.kind === "won";
-  const isHeat = !!heat && canHeat;
+  /* 누적 약점은 모든 묶음에서 볼 수 있다. 칠하는 바탕만 다르다 —
+     표 빈칸형은 표 위에, 원문은 글 위에, 카드형은 카드 목록 위에 */
+  const canHeat = true;
+  const isHeat = !!heat;
   const qCards = isHeat
-    ? (quiz.kind === "ct" ? ctHeatHtml(quiz) : wonHeatHtml(quiz))
+    ? (quiz.kind === "ct" ? ctHeatHtml(quiz)
+      : quiz.kind === "won" ? wonHeatHtml(quiz) : cardHeatHtml(quiz))
     : quizCardsHtml(quiz, weakOnly);
 
   const totalSubs = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
@@ -3015,7 +3084,7 @@ function renderQuiz(quizId, weakOnly, heat) {
     ${canHeat ? `<div class="ct-modes">
       <a class="ctmode${isHeat ? "" : " on"}" href="#q/${encodeURIComponent(quiz.id)}">풀기</a>
       <a class="ctmode${isHeat ? " on" : ""}" href="#q/${encodeURIComponent(quiz.id)}/heat"
-        >${quiz.kind === "won" ? "형광펜 보기" : "표로 보기"}</a>
+        >${quiz.kind === "ct" ? "표로 보기" : "형광펜 보기"}</a>
     </div>` : ""}
     ${quiz.kind === "ct" && !isHeat ? ctScopeHtml(quiz) : ""}
     ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
@@ -3250,12 +3319,44 @@ function renderCrush() {
 
 /* ---------- 세션 (한 장씩, 10카드 라운드. Brainscape·Anki 패턴) ---------- */
 let SESSION = null;
-const ROUND = 10;
+
+/* ---------- 세션 = 라운드 반복 ----------
+   한 라운드 = **지금 묶음을 한 바퀴**. 다 돌면 멈춰 서서 묻는다 — 끝낼지, 틀린 것만 한 바퀴 더 돌지.
+   이어가면 틀린 것만 다음 묶음이 되므로 바퀴마다 줄어들고, 전부 맞히면 세션이 끝난다.
+   (전에는 10장마다 끊었다. 장수로 끊으면 "다 잡았다"는 매듭이 안 지어졌다.)
+
+   ⭐ 세션 안에서만 쓰는 집계를 들고 다닌다 — 카드마다 몇 번 틀렸는지(miss), 몇 바퀴까지
+      남아 있었는지(last). 끝 화면에서 오래 걸린 카드를 돌려주기 위해서다.
+      카드의 복습 기록(S.records)과는 별개이고, 간격 반복에는 영향을 주지 않는다. */
+function newSession(queue, mode, scope) {
+  return {
+    queue, scope: scope || null, mode,
+    idx: 0, pass: 1, roundSize: queue.length,
+    results: { O: 0, T: 0, X: 0 },
+    wrong: new Set(),   // 이번 바퀴에서 틀린 카드
+    miss: {},           // 카드 → 이번 세션에서 틀린 횟수
+    last: {},           // 카드 → 마지막으로 남아 있던 바퀴
+    name: {},           // 카드 → 끝 화면에 보일 이름
+  };
+}
+
+/* 틀린 것만 모아 다음 바퀴. 집계는 이어받는다(그래야 "3바퀴째까지 남았다"를 셀 수 있다) */
+function nextRound() {
+  if (!SESSION || !SESSION.wrong.size) return false;
+  const ids = [...SESSION.wrong];
+  const queue = allSubs().filter(x => ids.includes(x.id)).map(x => ({ ...x, st: subState(x.id) }));
+  if (!queue.length) return false;
+  SESSION = {
+    ...newSession(queue, SESSION.mode, SESSION.scope),
+    pass: SESSION.pass + 1, miss: SESSION.miss, last: SESSION.last, name: SESSION.name,
+  };
+  return true;
+}
 
 function startSession(mode, scope) {
   const queue = buildQueue(mode, scope);
   if (!queue.length) return false;
-  SESSION = { queue, scope: scope || null, mode, idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+  SESSION = newSession(queue, mode, scope);
   if (location.hash === "#today") renderSession();
   else location.hash = "#today";
   return true;
@@ -3263,10 +3364,9 @@ function startSession(mode, scope) {
 
 function renderSession() {
   /* 새로고침으로 SESSION을 잃으면 범위 없이 복습 전체로 되살린다 */
-  if (!SESSION) SESSION = { queue: buildQueue("today"), scope: null, mode: "today", idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+  if (!SESSION) SESSION = newSession(buildQueue("today"), "today", null);
   if (!SESSION.queue.length) { SESSION = null; location.hash = ""; return; }
-  if (SESSION.idx >= SESSION.queue.length) return renderCheckpoint(true);
-  if (SESSION.round.length >= ROUND) return renderCheckpoint(false);
+  if (SESSION.idx >= SESSION.queue.length) return renderCheckpoint();   // 한 바퀴 끝
 
   const item = SESSION.queue[SESSION.idx];
   const { quiz, q, sub, qi, si, st } = item;
@@ -3274,8 +3374,8 @@ function renderSession() {
   $("#app").innerHTML = `
     <div class="topbar">
       <a class="back" href="#" data-act="quit-session">✕ 종료</a>
-      <div class="sessbar"><div class="sessbar-fill" style="width:${SESSION.round.length / ROUND * 100}%"></div></div>
-      <span class="prog">${SESSION.round.length + 1}/${ROUND} · 남은 ${SESSION.queue.length - SESSION.idx}</span>
+      <div class="sessbar"><div class="sessbar-fill" style="width:${SESSION.idx / SESSION.roundSize * 100}%"></div></div>
+      <span class="prog">${SESSION.pass > 1 ? `${SESSION.pass}바퀴 · ` : ""}${SESSION.idx + 1}/${SESSION.roundSize}</span>
     </div>
     <section class="q-card sess-card${lastR ? " last-" + lastR : ""}">
       <div class="sess-meta">
@@ -3293,7 +3393,16 @@ function renderSession() {
   window.scrollTo(0, 0);
 }
 
-function renderCheckpoint(finished) {
+/* 세션 요약: **오래 남은 것 → 많이 틀린 것** 차례.
+   끝 화면과 검사(test-round.js)가 같은 함수를 쓴다 — 화면 안에 묻어 두면 규칙이 조용히 어긋난다 */
+function sessionSummary(sess) {
+  return Object.keys(sess.miss || {})
+    .map(id => ({ id, w: sess.miss[id], last: (sess.last && sess.last[id]) || 1,
+                  name: (sess.name && sess.name[id]) || id }))
+    .sort((a, b) => b.last - a.last || b.w - a.w);
+}
+
+function renderCheckpoint() {
   /* 자동 백업: 마지막 백업이 3일 넘었으면 라운드 끝에 기록 JSON을 조용히 내려받는다.
      단 서버 동기화가 되고 있으면 내려받지 않는다 — 기록은 이미 서버에 있고,
      라운드마다 파일이 떨어지면 그게 더 성가시다 (백업 배너와 같은 조건) */
@@ -3305,26 +3414,40 @@ function renderCheckpoint(finished) {
   const r = SESSION.results;
   /* 전체 마스터리 비율은 뺐다. 분모가 앱에 실린 카드 전부(내체표·원문·성취기준형까지
      수천 장)라 무엇을 해도 한 자릿수에 머무른다. 오늘 한 만큼을 가리는 숫자였다 */
-  const left = SESSION.queue.length - SESSION.idx;
   const done = goalToday();
   const wrongN = SESSION.wrong ? SESSION.wrong.size : 0;
+  const cleared = !wrongN;
+  /* 다 잡은 뒤 남기는 것: 카드마다 몇 번 틀렸고 몇 바퀴까지 남아 있었는지.
+     제일 오래 남은 카드가 오늘 제일 약한 자리다 (맨 위에 두고 표시한다) */
+  const rows = sessionSummary(SESSION).slice(0, 12);
+  const longest = rows.length ? rows[0].last : 0;
   $("#app").innerHTML = `
     <div class="checkpoint">
-      <h2>${finished ? `${ico("check")} 오늘 큐 완주!` : "라운드 완료"}</h2>
+      <h2>${cleared
+        ? `${ico("check")} ${SESSION.pass}바퀴 만에 다 잡았어요`
+        : `${SESSION.pass}바퀴 완료`}</h2>
       <div class="cp-counts">
         <span class="cp cO">완벽 ${r.O}</span>
         <span class="cp cT">부분 ${r.T}</span>
         <span class="cp cX">몰랐다 ${r.X}</span>
       </div>
+      ${cleared ? "" : `<p class="cp-goal">틀린 ${wrongN}장이 남았어요. 이어가면 이것만 한 바퀴 더 돌아요</p>`}
+      ${cleared && rows.length ? `
+        <div class="cp-list">
+          <p class="cp-lh">손이 오래 걸린 카드</p>
+          ${rows.map(x => `<div class="cp-row${x.last === longest && longest > 1 ? " cp-long" : ""}">
+            <span class="cp-nm">${esc(x.name)}</span>
+            <span class="cp-w">${x.w}번 틀림 · ${x.last}바퀴째까지</span>
+          </div>`).join("")}
+        </div>` : ""}
+      ${cleared && !rows.length ? `<p class="cp-goal">한 바퀴에 다 맞혔어요</p>` : ""}
       <p class="cp-goal">${done >= 10
         ? `오늘의 미니 골 달성 · 스트릭 ${S.streakDays || 1}일`
         : `오늘 ${done}장 풀었어요. 미니 골까지 ${10 - done}장`}</p>
       ${autoBackedUp ? `<p class="cp-goal">기록 백업 파일을 자동으로 내려받았어요 (다운로드 폴더)</p>` : ""}
-      ${finished && wrongN ? `<p class="cp-goal">틀린 ${wrongN}장은 놓친 것만 다시 물어요</p>` : ""}
       <div class="cp-actions">
-        ${finished ? "" : `<button class="btn primary big" data-act="next-round">다음 라운드 (남은 ${left}장)</button>`}
-        ${finished && wrongN ? `<button class="btn primary big" data-act="retry-wrong">틀린 것 ${wrongN}장 다시</button>` : ""}
-        <button class="btn ghost" data-act="quit-session">오늘은 여기까지</button>
+        ${cleared ? "" : `<button class="btn primary big" data-act="next-round">틀린 것 ${wrongN}장만 한 바퀴 더</button>`}
+        <button class="btn ghost" data-act="quit-session">${cleared ? "끝내기" : "오늘은 여기까지"}</button>
       </div>
     </div>`;
   window.scrollTo(0, 0);
@@ -3588,13 +3711,10 @@ function onAppClick(e) {
     if (!startSession(mode, scope)) toast("지금 여기서 풀 카드가 없어요");
     return;
   }
-  if (act === "retry-wrong") {
-    /* 한 바퀴 돌고 그날 틀린 것만 다시. 판정이 O가 아니라서 집중 인출이 걸린다.
+  if (act === "next-round" || act === "retry-wrong") {
+    /* 틀린 것만 모아 한 바퀴 더. 판정이 O가 아니라서 집중 인출이 걸리고,
        AI가 만든 재질문(rq)이 있으면 놓친 요소만 다시 묻는다 */
-    const ids = SESSION ? [...SESSION.wrong] : [];
-    if (!ids.length) return;
-    const q = allSubs().filter(x => ids.includes(x.id)).map(x => ({ ...x, st: subState(x.id) }));
-    SESSION = { queue: q, scope: null, mode: "retry", idx: 0, round: [], results: { O: 0, T: 0, X: 0 }, wrong: new Set() };
+    if (!nextRound()) { toast("다시 볼 카드가 없어요"); return; }
     renderSession();
     return;
   }
@@ -3609,12 +3729,6 @@ function onAppClick(e) {
     SESSION = null;
     if (location.hash && location.hash !== "#") location.hash = "";
     else renderHome();
-    return;
-  }
-  if (act === "next-round") {
-    SESSION.round = [];
-    SESSION.results = { O: 0, T: 0, X: 0 };
-    renderSession();
     return;
   }
   if (act === "wrong-filter") { WRONG_FILTER = btn.dataset.f; renderWrong(); return; }
@@ -4023,6 +4137,39 @@ function onAppClick(e) {
     renderQuiz(quiz.id, false);
     return;
   }
+  /* 카드형 형광펜 보기: 카드를 누르면 그 카드의 시도 이력을 편다 */
+  if (act === "card-heat") {
+    const sec = btn.closest(".card-heat");
+    if (!sec) return;
+    const box = sec.querySelector(".heat-detail");
+    const reopen = box && box.dataset.no === btn.dataset.sid;
+    document.querySelectorAll(".hcell.sel").forEach(x => x.classList.remove("sel"));
+    document.querySelectorAll(".heat-detail").forEach(x => { x.innerHTML = ""; x.dataset.no = ""; });
+    if (reopen) return;                       // 같은 카드를 다시 누르면 닫기
+    btn.classList.add("sel");
+    if (box) {
+      box.dataset.no = btn.dataset.sid;
+      box.innerHTML = wonHeatDetailHtml(btn.dataset.name || "", btn.dataset.sid);
+    }
+    return;
+  }
+  /* 자주 틀린 것끼리: 거르개를 바꾸거나(card-min), 그 묶음으로 바로 한 바퀴 돈다(card-drill) */
+  if (act === "card-min" || act === "card-drill") {
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!quiz) return;
+    if (act === "card-min") {
+      setCardMin(quiz.id, +btn.dataset.min);
+      renderQuiz(quiz.id, false, true);       // 형광펜 보기를 유지한 채 다시 그린다
+      return;
+    }
+    const min = cardMin(quiz);
+    const ids = new Set(cardHeatItems(quiz).filter(x => !min || x.w >= min).map(x => x.id));
+    const queue = spread(allSubs().filter(x => ids.has(x.id)).map(x => ({ ...x, st: subState(x.id) })));
+    if (!queue.length) { toast("지금 여기서 풀 카드가 없어요"); return; }
+    SESSION = newSession(queue, "drill", "qz:" + quiz.id);
+    location.hash = "#today";
+    return;
+  }
   if (act === "ct-grade" || act === "ct-reveal") {
     const card = btn.closest(".ct-card");
     const reveal = act === "ct-reveal";
@@ -4287,12 +4434,16 @@ function onAppClick(e) {
         subEl.dataset.done = "1";
         bumpGoal();
         SESSION.results[btn.dataset.v]++;
-        SESSION.round.push(btn.dataset.v);
-        // 그날 틀린 것은 한 바퀴 끝에 재질문으로 다시 묻는다
-        if (btn.dataset.v !== "O") (SESSION.wrong = SESSION.wrong || new Set()).add(id);
-        else SESSION.wrong?.delete(id);
-        // 몰랐다 카드는 이번 세션 큐 끝에 다시 들어온다 (같은 세션 재학습)
-        if (btn.dataset.v === "X") SESSION.queue.push(SESSION.queue[SESSION.idx]);
+        /* 라운드 집계. ⚠️ 틀린 카드를 여기서 큐 끝에 도로 끼우지 않는다 —
+           그러면 한 바퀴가 끝나지 않아 "바퀴마다 줄어든다"가 무너진다.
+           틀린 것은 바퀴 끝에 모아 다음 바퀴의 묶음이 된다 */
+        const cur = SESSION.queue[SESSION.idx];
+        if (cur) SESSION.name[id] = `${cur.q.title}${cur.sub && cur.sub.sn ? " · " + cur.sub.sn : ""}`;
+        SESSION.last[id] = SESSION.pass;
+        if (btn.dataset.v !== "O") {
+          SESSION.wrong.add(id);
+          SESSION.miss[id] = (SESSION.miss[id] || 0) + 1;
+        } else SESSION.wrong.delete(id);
         SESSION.idx++;
         setTimeout(renderSession, 700);
       }

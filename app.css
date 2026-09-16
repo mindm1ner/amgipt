@@ -585,6 +585,17 @@ details.ctx .q-body { overflow-x: auto; }
 .cp-goal { font-size: .86rem; color: var(--sub); margin-top: 16px; }
 .cp-actions { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
 
+/* 라운드를 다 돌고 남기는 요약 — 오래 남은 카드부터. 숫자는 이번 세션 안에서만 센 것이다 */
+.cp-list { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); text-align: left; }
+.cp-lh { font-size: .78rem; font-weight: 700; color: var(--sub); margin-bottom: 8px; }
+.cp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 6px 8px; border-radius: 8px; font-size: .84rem; }
+.cp-row + .cp-row { margin-top: 2px; }
+.cp-nm { color: var(--ink); }
+.cp-w { color: var(--sub); font-size: .78rem; white-space: nowrap; }
+.cp-row.cp-long { background: var(--no-bg); }
+.cp-row.cp-long .cp-w { color: var(--no); font-weight: 700; }
+
 /* AI 박스 + 푸터 */
 .ai-box {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
@@ -939,6 +950,11 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .wg-cell .wl[data-lab]::before { position: static; display: block; width: auto;
   text-align: left; font-size: .66rem; margin-bottom: 3px; }
 .wg-none { font-size: .76rem; color: var(--faint); }
+
+/* 카드형 형광펜 보기 — 칠할 표가 없어서 카드 목록 자체를 칠한다 */
+.chl { display: grid; gap: 3px; }
+.chl .hcell { font-size: .84rem; margin-bottom: 0; }
+.chl .mt-empty { margin: 8px 2px; }
 
 .hclean > summary { cursor: pointer; list-style: none; font-size: .78rem; color: var(--sub);
   padding: 4px 2px; }
