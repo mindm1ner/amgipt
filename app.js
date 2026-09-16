@@ -2370,12 +2370,29 @@ function wonLineHtml(quiz, doc, i, blanks, pred) {
   return `<p class="${cls}" data-i="${i}"${lab}>${out}</p>`;
 }
 
+/* ---------- 대조표로 놓인 원문 ----------
+   세 교과를 나란히 놓고 비교하는 자료(통합교과 세 칸 판)는 줄을 이어 쓰면 비교가 안 된다.
+   `doc.grid` 가 있으면 같은 줄들을 표 자리에 앉힌다.
+   ⚠️ 여기서 하는 일은 **자리를 옮기는 것뿐**이다. 빈칸 열쇠는 줄 글자에서 나오므로
+   배치를 바꿔도 뚫어 둔 자리와 복습 기록은 그대로 따라온다. */
+function wonBodyHtml(doc, lineHtml) {
+  if (!doc.grid) return doc.lines.map((_, i) => lineHtml(i)).join("");
+  const head = `<div class="wg-h"></div>` + doc.grid.cols.map((c, ci) =>
+    `<div class="wg-h wg-c${ci}">${esc(c)}</div>`).join("");
+  const rows = doc.grid.rows.map(r => `<div class="wg-l">${esc(r.label)}</div>` +
+    r.cells.map((i, ci) => `<div class="wg-cell wg-c${ci}">${i == null
+      ? `<span class="wg-none">${esc(r.none || "없음")}</span>`
+      : lineHtml(i)}</div>`).join("")).join("");
+  return `<div class="wg-scroll"><div class="wg" style="--wg-cols:${doc.grid.cols.length}"
+    >${head}${rows}</div></div>`;
+}
+
 function wonCardHtml(quiz, doc, qi, pred) {
   const dk = wonDocKey(doc);
   const blanks = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
   const shown = pred ? blanks.filter(b => pred(wonSid(quiz.id, b))) : blanks;
   if (pred && !shown.length) return "";
-  const body = doc.lines.map((_, i) => wonLineHtml(quiz, doc, i, blanks, pred)).join("");
+  const body = wonBodyHtml(doc, i => wonLineHtml(quiz, doc, i, blanks, pred));
   return `
     <section class="q-card ct-card won-card" data-qi="${qi}" data-won="${esc(quiz.id)}"
       data-dk="${esc(dk)}">
@@ -2390,13 +2407,36 @@ function wonCardHtml(quiz, doc, qi, pred) {
       </div>` : ""}`.concat(`</section>`);
 }
 
+/* ---------- 자주 틀린 자리만 빈칸 (원문 모드) ----------
+   내체표와 같은 거르개다. 여러 번 맞힌 자리까지 매번 채워 넣는 건 시간 낭비라
+   몇 번 이상 틀린 자리만 비우고 나머지는 원문을 펴 둔다. 0이면 거르지 않는다(전부).
+   ⚠️ 빈칸 정하기 중에는 걸지 않는다 — 안 보이는 자리는 뺄 수가 없다.
+   ⚠️ 오늘의 복습에도 걸지 않는다(ct와 같은 이유: 아직 안 푼 새 카드가 통째로 사라진다). */
+const WON_MIN_STEPS = [[0, "전부"], [1, "1번 이상"], [2, "2번 이상"], [3, "3번 이상"]];
+function wonMin(quiz) {
+  const v = S.wonMin && S.wonMin[quiz.id];
+  return typeof v === "number" ? v : 0;
+}
+function setWonMin(id, n) {
+  S.wonMin = S.wonMin || {};
+  S.wonMin[id] = n;
+  persist();
+}
+/* 이 원문에서 n번 이상 틀린 자리가 몇 곳인가 (n=0 이면 뚫어 둔 자리 전부) */
+function wonMinCount(quiz, n) {
+  return wonList().filter(b => b.q === quiz.id && !b.o
+    && (!n || ctHeat(wonSid(quiz.id, b)).w >= n)).length;
+}
+
 function wonHtml(quiz, weakOnly, pred) {
   const all = wonList().filter(b => b.q === quiz.id);
   const n = all.filter(b => !b.o).length;
   /* 원문이 바뀌어 자리를 못 찾은 빈칸. 기록은 그대로 있으니 버리지 말고 알려만 준다 */
   const lost = all.filter(b => b.o);
-  const filter = (weakOnly || pred)
-    ? (id => (!weakOnly || isWeak(id)) && (!pred || pred(id)))
+  const min = WON_EDIT ? 0 : wonMin(quiz);
+  const filter = (weakOnly || pred || min)
+    ? (id => (!weakOnly || isWeak(id)) && (!pred || pred(id))
+        && (!min || ctHeat(id).w >= min))
     : null;
   const head = `
     <div class="ctscope wonbar">
@@ -2408,6 +2448,16 @@ function wonHtml(quiz, weakOnly, pred) {
         <button class="ck" data-act="won-edit" aria-pressed="${WON_EDIT}">빈칸 정하기</button>
         ${WON_EDIT && n ? `<button class="ck danger" data-act="won-clear">이 원문 빈칸 모두 빼기</button>` : ""}
       </div>
+      ${WON_EDIT || !n ? "" : `
+      <div class="cs-head cs-head2"><b>얼마나 틀린 것만</b>
+        <span>여러 번 틀린 자리만 다시 비워요. 나머지는 원문 그대로 펴 둬요 · 이 원문에 저장돼요</span></div>
+      <div class="cs-row">${WON_MIN_STEPS.map(([v, label]) => {
+        const c = wonMinCount(quiz, v);
+        return `<button class="ck" data-act="won-min" data-min="${v}"
+          aria-pressed="${min === v}">${label}<span class="n">${c}</span></button>`;
+      }).join("")}</div>
+      ${min && !wonMinCount(quiz, min) ? `<p class="cs-none">${
+        min}번 이상 틀린 자리가 아직 없어요. 단계를 낮추거나 ‘전부’로 돌리세요</p>` : ""}`}
       ${lost.length ? `<div class="wlost">
         <b>자리를 못 찾은 빈칸 ${lost.length}곳</b>
         <p>원문 자료가 바뀌어 이 낱말이 지금 글에 없어요. 복습 기록은 지우지 않고 두었어요.
@@ -2426,6 +2476,88 @@ function wonHtml(quiz, weakOnly, pred) {
   return head + (cards || `<p class="mt-empty">${filter
     ? "이 원문에는 다시 볼 칸이 없어요."
     : "아직 뚫은 빈칸이 없어요. '빈칸 정하기'를 켜고 외울 자리를 드래그하세요."}</p>`);
+}
+
+/* ---------- 원문 형광펜 보기 (누적 약점) ----------
+   내체표는 칠할 격자가 있지만 원문은 흐르는 글이라 없다. 그래서 **빈칸 자리에 그대로 칠한다.**
+   앞뒤 문장이 남아 있어야 "어느 대목에서 자꾸 막히는지"가 보인다 — 목록으로 뽑으면 그게 사라진다.
+   진하기 = 틀린 횟수(ctHeat와 같은 3단계). 마지막에 한 번 맞혔다고 색이 빠지지 않는다. */
+function wonHeatLineHtml(quiz, doc, i, blanks) {
+  const line = doc.lines[i] || "";
+  const m = (doc.meta && doc.meta[i]) || null;
+  const cls = "wl" + (m && m.h ? " wh" : "");
+  const lab = m && m.l ? ` data-lab="${esc(m.l)}"` : "";
+  const mine = blanks.filter(b => b.i === i).sort((a, b) => a.s - b.s);
+  if (!mine.length) return `<p class="${cls}" data-i="${i}"${lab}>${esc(line)}</p>`;
+  let out = "", at = 0;
+  for (const b of mine) {
+    out += esc(line.slice(at, b.s));
+    const ans = line.slice(b.s, b.e);
+    const id = wonSid(quiz.id, b);
+    const { w, tried, lv } = ctHeat(id);
+    const tip = !tried ? "아직 안 푼 자리" : !w ? "틀린 적 없어요" : `${w}번 틀렸어요`;
+    out += `<button type="button" class="hspot${lv ? " h" + lv : tried ? "" : " fresh"}"
+      data-act="won-heat" data-sid="${esc(id)}" data-k="${esc(b.k)}" data-ans="${esc(ans)}"
+      title="${esc(tip)}">${esc(ans)}${w ? `<span class="hn">${w}</span>` : ""}</button>`;
+    at = b.e;
+  }
+  out += esc(line.slice(at));
+  return `<p class="${cls}" data-i="${i}"${lab}>${out}</p>`;
+}
+
+function wonHeatCardHtml(quiz, doc, qi) {
+  const dk = wonDocKey(doc);
+  const blanks = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
+  if (!blanks.length) return "";
+  const wrongN = blanks.filter(b => ctHeat(wonSid(quiz.id, b)).w).length;
+  const body = `<div class="won-body">${
+    wonBodyHtml(doc, i => wonHeatLineHtml(quiz, doc, i, blanks))}</div>
+    <div class="heat-detail"></div>`;
+  /* 깨끗한 원문까지 다 펴 두면 정작 볼 곳을 찾느라 스크롤을 한참 내린다 (표로 보기와 같은 규칙) */
+  return `<section class="q-card won-card won-heat" data-qi="${qi}" data-quiz="${esc(quiz.id)}"
+      data-dk="${esc(dk)}">
+      <div class="q-head"><span class="qno">${esc(doc.title)}</span>
+        <span class="qpts">${wrongN ? `틀린 자리 ${wrongN}` : "깨끗"}</span></div>
+      ${wrongN ? body : `<details class="hclean">
+        <summary>틀린 자리가 없어요 · 원문 펼치기</summary>${body}</details>`}
+    </section>`;
+}
+
+function wonHeatHtml(quiz) {
+  const cards = quiz.questions.map((q, qi) => {
+    const doc = wonDoc(quiz, q.no);
+    return doc ? wonHeatCardHtml(quiz, doc, qi) : "";
+  }).join("");
+  if (!cards) return `<p class="mt-empty">아직 뚫은 빈칸이 없어요. '풀기'에서 외울 자리를 먼저 드래그하세요.</p>`;
+  return `<div class="heat-lgd">
+      <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>
+      <span><i class="h3"></i>3번 이상 틀린 자리</span>
+      <span class="hl-note">자리를 누르면 그때 쓴 답이 나와요</span>
+    </div>${cards}`;
+}
+
+/* 빈칸 하나의 시도 이력. 원문에는 혼동한 '칸'이 없어서(자리가 곧 줄이다) 짝 표시는 넣지 않는다 */
+function wonHeatDetailHtml(ans, id) {
+  const h = history(id);
+  const head = `<div class="hd-head"><div><b class="hd-ans">${esc(ans)}</b></div>
+      <button class="hd-close" data-act="heat-close" aria-label="닫기">✕</button></div>`;
+  if (!h.length) return head + `<p class="hd-none">아직 안 푼 자리예요.</p>`;
+  const rows = h.slice().reverse().map(r => {
+    const [, mo, dy] = String(r.d || "").split("-");
+    const mine = r.v || (r.x && r.x.w) || "";
+    return `<li>
+      <span class="hd-d">${mo ? `${+mo}/${+dy}` : ""}</span>
+      <div>
+        <div class="hd-r">${vTag(r.r)}${mine
+          ? `<span class="hd-mine">${esc(mine)}</span>`
+          : `<span class="hd-mine none">안 씀</span>`}</div>
+        ${r.x && r.x.t ? `<div class="hd-x"><span class="cttag t-${esc(r.x.t)}"
+          >${esc(CT_ERR_KO[r.x.t] || r.x.t)}</span>${esc(r.x.n || "")}</div>` : ""}
+      </div></li>`;
+  }).join("");
+  const w = h.filter(r => r.r !== "O").length;
+  return head + `<p class="hd-sum">${h.length}번 풀어서 ${w}번 틀렸어요</p>
+    <ul class="hd-tl">${rows}</ul>`;
 }
 
 /* ---------- 표 빈칸 오답 유형 진단 ----------
@@ -2863,8 +2995,12 @@ function renderQuiz(quizId, weakOnly, heat) {
   if (!quiz) { location.hash = ""; return; }
 
   /* 표로 보기: 같은 표를 풀지 않고 누적 약점만 얹어서 본다. 표 있는 묶음에서만 켜진다 */
-  const isHeat = !!heat && quiz.kind === "ct";
-  const qCards = isHeat ? ctHeatHtml(quiz) : quizCardsHtml(quiz, weakOnly);
+  /* 원문 모드도 같은 자리에 붙인다. 표 대신 글 위에 칠하는 것만 다르다 */
+  const canHeat = quiz.kind === "ct" || quiz.kind === "won";
+  const isHeat = !!heat && canHeat;
+  const qCards = isHeat
+    ? (quiz.kind === "ct" ? ctHeatHtml(quiz) : wonHeatHtml(quiz))
+    : quizCardsHtml(quiz, weakOnly);
 
   const totalSubs = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
   const doneSubs = quiz.questions.reduce((a, q) =>
@@ -2876,9 +3012,10 @@ function renderQuiz(quizId, weakOnly, heat) {
       <span class="ttl">${esc(quiz.title)}${weakOnly ? ' <span class="chip">틀린 것만</span>' : ""}</span>
       <span class="prog" id="prog">기록 ${doneSubs}/${totalSubs}</span>
     </div>
-    ${quiz.kind === "ct" ? `<div class="ct-modes">
+    ${canHeat ? `<div class="ct-modes">
       <a class="ctmode${isHeat ? "" : " on"}" href="#q/${encodeURIComponent(quiz.id)}">풀기</a>
-      <a class="ctmode${isHeat ? " on" : ""}" href="#q/${encodeURIComponent(quiz.id)}/heat">표로 보기</a>
+      <a class="ctmode${isHeat ? " on" : ""}" href="#q/${encodeURIComponent(quiz.id)}/heat"
+        >${quiz.kind === "won" ? "형광펜 보기" : "표로 보기"}</a>
     </div>` : ""}
     ${quiz.kind === "ct" && !isHeat ? ctScopeHtml(quiz) : ""}
     ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
@@ -3807,6 +3944,24 @@ function onAppClick(e) {
   /* 표로 보기에서 칸 누르기: 그 칸의 시도 이력을 펴고, 그때 혼동한 칸을 표 위에서 같이 표시한다.
      "이 칸에 쓸 걸 저 칸에 썼다"의 짝이 기록에 남아 있어서(x.r) 목록으로는 안 보이던
      맞바꿈 버릇이 표 위에서 보인다 */
+  /* 원문 형광펜 보기에서 자리 누르기: 그 자리의 시도 이력을 편다.
+     원문은 칸이 아니라 줄이라 혼동 짝(x.r) 표시는 없다 — 같은 줄 안에서 자리를 바꿔 쓴 것은
+     "다른 자리(spot)" 유형으로 이미 기록에 남는다 */
+  if (act === "won-heat") {
+    const sec = btn.closest(".won-heat");
+    if (!sec) return;
+    const box = sec.querySelector(".heat-detail");
+    const reopen = box && box.dataset.no === btn.dataset.k;
+    document.querySelectorAll(".hspot.sel").forEach(x => x.classList.remove("sel"));
+    document.querySelectorAll(".heat-detail").forEach(x => { x.innerHTML = ""; x.dataset.no = ""; });
+    if (reopen) return;                       // 같은 자리를 다시 누르면 닫기
+    btn.classList.add("sel");
+    if (box) {
+      box.dataset.no = btn.dataset.k;
+      box.innerHTML = wonHeatDetailHtml(btn.dataset.ans || "", btn.dataset.sid);
+    }
+    return;
+  }
   if (act === "heat-cell") {
     const sec = btn.closest(".ct-heat");
     if (!sec) return;
@@ -3836,7 +3991,7 @@ function onAppClick(e) {
     return;
   }
   if (act === "heat-close") {
-    document.querySelectorAll(".hcell.sel, .hcell.hlink").forEach(x => x.classList.remove("sel", "hlink"));
+    document.querySelectorAll(".hcell.sel, .hcell.hlink, .hspot.sel").forEach(x => x.classList.remove("sel", "hlink"));
     const box = btn.closest(".heat-detail");
     if (box) { box.innerHTML = ""; box.dataset.no = ""; }
     return;
@@ -3856,6 +4011,15 @@ function onAppClick(e) {
     const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
     if (!quiz) return;
     setCtMin(quiz.range, +btn.dataset.min);
+    renderQuiz(quiz.id, false);
+    return;
+  }
+  /* 원문 모드도 같은 거르개. 저장은 범위가 아니라 원문 묶음(quiz.id)에 붙인다 —
+     같은 range 아래 성취기준·안내서가 여러 벌이라 한 곳에 저장하면 서로 덮어쓴다 */
+  if (act === "won-min") {
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!quiz) return;
+    setWonMin(quiz.id, +btn.dataset.min);
     renderQuiz(quiz.id, false);
     return;
   }
