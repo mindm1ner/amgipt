@@ -452,7 +452,16 @@ function latest(id) { const h = history(id); return h.length ? h[h.length - 1] :
    같은 줄에 x로 붙는다. 오답 노트이자 "자주 틀리는 칸만 빈칸"의 재료 */
 /* val = 그때 내가 쓴 답. 예전에는 판정과 놓친 것만 남겨서, 기록을 나중에 열어도
    "무엇을 어떻게 틀렸는지"를 되짚을 수가 없었다. 길면 잘라 담는다(저장소가 브라우저다) */
-function record(id, r, auto, miss, rq, err, val) {
+/* fix = **같은 시도의 판정을 고쳐 쓰는 것**인가. 참이면 새 줄을 쓰지 않고 마지막 줄을 고친다.
+   ⚠️ 예전에는 이것을 시계로 짐작했다 — "마지막 기록에서 10분 안이면 정정". 그게 틀린 자국을
+      지웠다. 원문 모드는 한 장에 빈칸이 수십 개라 '채점 → 틀린 것 보고 다시 풀기 → 채점'을
+      한자리에서 반복하는데, 그 재시도가 전부 10분 안에 들어온다. 게다가 고칠 때마다
+      last.t 를 지금으로 밀어 놔서 창이 같이 따라와, **하루치 시도가 통째로 한 줄**이 됐다.
+      다시 풀어 맞히면 앞서 틀린 줄이 O 로 덮여 형광펜까지 사라졌다(누적이 아니라 '지금 상태').
+      내체표는 여러 날에 걸쳐 풀어서 날마다 줄이 생겨 잘 안 드러났을 뿐, 같은 자리였다.
+   그래서 새 줄이냐 정정이냐는 시계가 아니라 **부르는 쪽이 정한다**:
+      채점하기·세션 판정 = 새 시도(줄 추가) · 칸 눌러 판정 바꾸기·오답 유형 진단 = 정정(덮어쓰기) */
+function record(id, r, auto, miss, rq, err, val, fix) {
   const h = S.records[id] || (S.records[id] = []);
   const v = typeof val === "string" && val.trim() ? val.trim().slice(0, 500) : undefined;
   const t = Date.now();
@@ -464,8 +473,7 @@ function record(id, r, auto, miss, rq, err, val) {
   if (Array.isArray(q) && !q.length) q = undefined;
   // 새 재질문이 없는데 여전히 못 맞혔으면(예: AI 꺼짐·눈풀이) 기존 질문 목록을 이어간다
   if (!q && r !== "O" && last && last.rq) q = last.rq;
-  // 같은 세션에서 판정을 바꾸면(10분 안) 새 줄이 아니라 정정으로 처리
-  if (last && t - last.t < 10 * 60 * 1000) {
+  if (fix && last) {
     last.r = r; last.a = auto || last.a; last.t = t;
     if (m) last.m = m; else delete last.m;
     if (q) last.rq = q; else delete last.rq;
@@ -2382,16 +2390,83 @@ function wonLineHtml(quiz, doc, i, blanks, pred) {
    `doc.grid` 가 있으면 같은 줄들을 표 자리에 앉힌다.
    ⚠️ 여기서 하는 일은 **자리를 옮기는 것뿐**이다. 빈칸 열쇠는 줄 글자에서 나오므로
    배치를 바꿔도 뚫어 둔 자리와 복습 기록은 그대로 따라온다. */
+/* 한 행의 칸들. 두 모양을 다 읽는다 —
+     cells [줄, 줄, 줄]        열마다 줄 하나 (성취기준 세 칸 판)
+     segs  [{c,n,i}…]         c열에서 n칸을 차지하는 줄 i (안내서 세 칸 판)
+   ⭐ segs 는 **글자까지 같은 이웃 교과를 한 칸으로 합치려고** 있다. 같은 문장을 세 번
+      외울 이유가 없어서 줄도 하나만 싣는다. 비어 있는 열은 '없음' 칸으로 메운다. */
+function wgCells(r, ncol, lineHtml) {
+  const cell = (ci, n, i) => `<div class="wg-cell wg-c${ci}${n > 1 ? " wg-wide" : ""}"${
+    n > 1 ? ` style="grid-column:span ${n}" data-same="${n === ncol ? "세" : "두"} 교과 같음"` : ""
+    }>${i == null ? `<span class="wg-none">${esc(r.none || "없음")}</span>` : lineHtml(i)}</div>`;
+  if (r.cells) return r.cells.map((i, ci) => cell(ci, 1, i)).join("");
+  const by = {};
+  for (const s of (r.segs || [])) by[s.c] = s;
+  let out = "", c = 0;
+  while (c < ncol) {
+    const s = by[c];
+    out += cell(c, s ? s.n : 1, s ? s.i : null);
+    c += s ? s.n : 1;
+  }
+  return out;
+}
+
 function wonBodyHtml(doc, lineHtml) {
   if (!doc.grid) return doc.lines.map((_, i) => lineHtml(i)).join("");
+  const ncol = doc.grid.cols.length;
   const head = `<div class="wg-h"></div>` + doc.grid.cols.map((c, ci) =>
     `<div class="wg-h wg-c${ci}">${esc(c)}</div>`).join("");
-  const rows = doc.grid.rows.map(r => `<div class="wg-l">${esc(r.label)}</div>` +
-    r.cells.map((i, ci) => `<div class="wg-cell wg-c${ci}">${i == null
-      ? `<span class="wg-none">${esc(r.none || "없음")}</span>`
-      : lineHtml(i)}</div>`).join("")).join("");
-  return `<div class="wg-scroll"><div class="wg" style="--wg-cols:${doc.grid.cols.length}"
+  const rows = doc.grid.rows.map(r =>
+    `<div class="wg-l">${esc(r.label)}${r.tag ? `<span class="wg-tag">${esc(r.tag)}</span>` : ""}</div>`
+    + wgCells(r, ncol, lineHtml)).join("");
+  return `<div class="wg-scroll"><div class="wg" style="--wg-cols:${ncol}"
     >${head}${rows}</div></div>`;
+}
+
+/* ---------- 추천 자리 한 번에 뚫기 ----------
+   대조표 자료(안내서 세 칸 판)는 빌드가 `doc.hint` 로 **그 교과에만 있는 말**의 자리를 같이 보낸다.
+   자리가 66개 × 세 칸이라 손으로 드래그하는 건 현실성이 없고, 어차피 여기서 외울 것은
+   갈리는 말이라 그 자리가 곧 빈칸이다. 그래도 미리 박아 넣지는 않는다 — **누를 때만** 뚫는다.
+   이미 뚫어 둔 자리와 겹치면 건너뛴다(손으로 잡은 범위를 덮어쓰지 않는다). */
+function wonHintLeft(quiz, doc) {
+  const dk = wonDocKey(doc);
+  const mine = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
+  return (doc.hint || []).filter(h => !mine.some(x => x.i === h[0] && h[1] < x.e && x.s < h[2])).length;
+}
+function wonHintPunch(card) {
+  const quiz = DATA.find(z => z.id === card.dataset.won);
+  const dk = card.dataset.dk;
+  const doc = quiz && wonDoc(quiz, dk);
+  if (!doc || !doc.hint) return;
+  const L = wonList();
+  let added = 0, kept = 0;
+  for (const h of doc.hint) {
+    const i = h[0], line = doc.lines[i] || "";
+    let a = h[1], b = h[2];
+    while (a < b && /\s/.test(line[a])) a++;
+    while (b > a && /\s/.test(line[b - 1])) b--;
+    if (b - a < 1) continue;
+    const mine = L.filter(x => x.q === quiz.id && x.dk === dk && x.i === i && !x.o);
+    if (mine.some(x => a < x.e && x.s < b)) continue;      // 이미 뚫어 둔 자리는 그대로 둔다
+    const nb = {
+      q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
+      ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
+    };
+    /* 떼어 둔 같은 자리가 있으면 되살린다 — 지난 기록이 그 열쇠에 붙어 있다 (wonAdd 와 같은 규칙) */
+    const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
+    if (off >= 0) L.splice(off, 1);
+    L.push(nb);
+    if (history(wonSid(quiz.id, nb)).length) kept++;
+    added++;
+  }
+  persist();
+  wonBuild();
+  const keepPlace = wonKeepPlace(card);
+  renderQuiz(quiz.id, false);
+  keepPlace();
+  toast(added ? "비교 포인트 " + added + "곳을 빈칸으로 만들었어요"
+    + (kept ? " (지난 기록 " + kept + "곳 이어받음)" : "")
+    : "새로 뚫을 자리가 없어요 — 이미 다 뚫려 있어요");
 }
 
 function wonCardHtml(quiz, doc, qi, pred) {
@@ -2400,18 +2475,21 @@ function wonCardHtml(quiz, doc, qi, pred) {
   const shown = pred ? blanks.filter(b => pred(wonSid(quiz.id, b))) : blanks;
   if (pred && !shown.length) return "";
   const body = wonBodyHtml(doc, i => wonLineHtml(quiz, doc, i, blanks, pred));
+  const left = WON_EDIT ? wonHintLeft(quiz, doc) : 0;
+  const acts = WON_EDIT
+    ? `${left ? `<button class="btn primary" data-act="won-hint">비교 포인트 ${left}곳 한 번에 빈칸</button>` : ""}
+       ${blanks.length ? `<span class="ct-tip">노란 자리를 누르면 빈칸이 없어져요</span>` : ""}`
+    : (blanks.length ? `<button class="btn primary" data-act="ct-grade">채점하기</button>
+         <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
+         <span class="ct-score"></span>` : "");
   return `
     <section class="q-card ct-card won-card" data-qi="${qi}" data-won="${esc(quiz.id)}"
       data-dk="${esc(dk)}">
       <div class="q-head"><span class="qno">${esc(doc.title)}</span>
+        ${doc.note ? `<span class="wnote">${esc(doc.note)}</span>` : ""}
         <span class="qpts">빈칸 ${blanks.length}</span></div>
       <div class="won-body">${body}</div>
-      ${blanks.length ? `<div class="ct-acts">
-        ${WON_EDIT ? `<span class="ct-tip">노란 자리를 누르면 빈칸이 없어져요</span>`
-          : `<button class="btn primary" data-act="ct-grade">채점하기</button>
-             <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
-             <span class="ct-score"></span>`}
-      </div>` : ""}`.concat(`</section>`);
+      ${acts.trim() ? `<div class="ct-acts">${acts}</div>` : ""}`.concat(`</section>`);
 }
 
 /* ---------- 자주 틀린 자리만 빈칸 (원문 모드) ----------
@@ -2450,7 +2528,9 @@ function wonHtml(quiz, weakOnly, pred) {
       <div class="cs-head"><b>원문 모드</b>
         <span>${WON_EDIT
           ? "낱말을 톡 누르면 그 낱말이 빈칸이 돼요. 여러 낱말은 드래그해서 아래 막대를 누르세요"
-          : "원문에서 외울 자리를 골라 빈칸으로 만들어요"} · 뚫은 자리 ${n}곳</span></div>
+          : "원문에서 외울 자리를 골라 빈칸으로 만들어요"} · 뚫은 자리 ${n}곳${
+          quiz.docs.some(d => d.hint && d.hint.length)
+            ? " · 대조표는 카드마다 ‘비교 포인트 한 번에 빈칸’을 쓸 수 있어요" : ""}</span></div>
       <div class="cs-row">
         <button class="ck" data-act="won-edit" aria-pressed="${WON_EDIT}">빈칸 정하기</button>
         ${WON_EDIT && n ? `<button class="ck danger" data-act="won-clear">이 원문 빈칸 모두 빼기</button>` : ""}
@@ -2858,7 +2938,8 @@ function ctSid(b) { return (b && b.dataset.rsid) || (b && b.dataset.sid); }
 
 /* 오답 유형을 기록에 남긴다. 이 기록이 오답 노트이자, 나중에 "자주 틀리는 칸만 빈칸" 의 재료다 */
 function ctSaveErr(w, err, r) {
-  record(ctSid(w.b), r || "X", null, r === "O" ? null : [w.eff || w.sub.answer], "", err, w.val);
+  /* 진단은 방금 채점이 쓴 줄에 유형을 얹는 것이다 — 새 시도가 아니라 그 줄의 정정 */
+  record(ctSid(w.b), r || "X", null, r === "O" ? null : [w.eff || w.sub.answer], "", err, w.val, true);
 }
 
 /* ---------- 맥락형 오답 유형 진단 ----------
@@ -4044,6 +4125,7 @@ function onAppClick(e) {
     return;
   }
   if (act === "won-drop") { wonDrop(btn.closest(".ct-card"), +btn.dataset.i, +btn.dataset.s); return; }
+  if (act === "won-hint") { wonHintPunch(btn.closest(".ct-card")); return; }
   if (act === "won-clear") {
     const id = decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]);
     const quiz = DATA.find(z => z.id === id);
@@ -4173,6 +4255,10 @@ function onAppClick(e) {
   if (act === "ct-grade" || act === "ct-reveal") {
     const card = btn.closest(".ct-card");
     const reveal = act === "ct-reveal";
+    /* 이미 채점한 카드에서 채점하기를 또 누른 것 = 같은 시도를 다시 매기는 것이라 줄을 안 늘린다.
+       다시 풀려고 화면을 새로 그리면(새로 고침·빈칸 정하기 토글·거르개 바꾸기) graded 가
+       떨어져 나가므로 그건 새 시도로 잡힌다 */
+    const again = card.classList.contains("graded");
     let ok = 0, all = 0;
     /* 같은 [범주 · 영역 · 학년군] 안의 빈칸끼리는 순서가 없다. 내용 요소를 나열해 둔
        것이라 몇 번째로 쓰느냐는 시험에서 묻지 않는다. 자기 답부터 맞춰 보고, 남은
@@ -4257,7 +4343,7 @@ function onAppClick(e) {
       inp.readOnly = true;
       /* 자동 판정은 제안이다. 합산·저장은 고정 코드가 하고, 칸을 눌러 바꿀 수 있다 */
       if (!reveal) {
-        record(ctSid(b), hit ? "O" : "X", hit ? "O" : "X", hit ? null : [ans], "", null, inp.value);
+        record(ctSid(b), hit ? "O" : "X", hit ? "O" : "X", hit ? null : [ans], "", null, inp.value, again);
         bumpGoal();   // 빈칸 하나가 카드 하나이므로 칸마다 센다
       }
     });
@@ -4306,8 +4392,9 @@ function onAppClick(e) {
     b.classList.toggle("miss", next !== "O");
     const ans = b.dataset.eff || b.dataset.ans;   // 묶음 안에서 다시 나눈 정답
     if (next !== "O") b.querySelector(".ctans").textContent = ans;
+    /* 칸을 눌러 판정을 고치는 것 = 방금 채점한 그 시도의 정정 */
     record(ctSid(b), next === "△" ? "T" : next, null, next === "O" ? null : [ans], "",
-      null, (b.querySelector(".ctin") || {}).value);
+      null, (b.querySelector(".ctin") || {}).value, true);
     persist(); schedulePush();
     const card = b.closest(".ct-card");
     const marks = [...card.querySelectorAll(".ctmark")];
@@ -4413,7 +4500,11 @@ function onAppClick(e) {
     /* 답안 칸이 여럿이면(파트·재질문) 이어 붙여 남긴다 */
     const wrote = [...subEl.querySelectorAll(".answer")].map(a => a.value.trim())
       .filter(Boolean).join(" / ");
-    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "", cterr, wrote);
+    /* 이 카드에서 이미 판정을 남겼으면 = 마음을 바꾼 정정. 다음 바퀴에 같은 카드가 다시 나오면
+       그때는 새로 그려진 카드라 이 표가 없어 새 시도로 잡힌다 */
+    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "", cterr, wrote,
+      subEl.dataset.done === "1");
+    subEl.dataset.done = "1";
     draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
     const saved = subEl.querySelector(".saved-msg");

@@ -950,6 +950,14 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .wg-cell .wl[data-lab]::before { position: static; display: block; width: auto;
   text-align: left; font-size: .66rem; margin-bottom: 3px; }
 .wg-none { font-size: .76rem; color: var(--faint); }
+/* 글자까지 같은 이웃 교과는 한 칸으로 합친다 — 합쳤다는 것 자체가 "한 번만 외우면 된다"는 신호라
+   바탕을 눕혀서 갈리는 칸과 눈에 띄게 갈라 놓는다 (안내서 세 칸 판) */
+.wg-cell.wg-wide { background: var(--accent-soft); }
+.wg-cell.wg-wide::before { content: attr(data-same); display: block; font-size: .64rem;
+  font-weight: 700; letter-spacing: .03em; color: var(--sub); margin-bottom: 3px; }
+.wg-l .wg-tag { display: block; font-size: .62rem; font-weight: 700; color: var(--warn);
+  margin-top: 3px; }
+.wnote { font-size: .72rem; color: var(--sub); }
 
 /* 카드형 형광펜 보기 — 칠할 표가 없어서 카드 목록 자체를 칠한다 */
 .chl { display: grid; gap: 3px; }
