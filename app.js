@@ -3163,7 +3163,7 @@ function quizCardsHtml(quiz, weakOnly, pred) {
     return `
     <section class="q-card">
       <div class="q-head"><span class="qno">${/^\d+$/.test(String(q.no))
-        ? q.no + "번" : esc(String(q.no))} · ${esc(q.title)}</span>
+        ? q.no + "번 · " : String(q.title).startsWith(String(q.no)) ? "" : esc(String(q.no)) + " · "}${esc(q.title)}</span>
         ${q.points ? `<span class="qpts">[${q.points}점]</span>` : ""}</div>
       <div class="q-frame">${esc(q.frame)}</div>
       ${q.body ? `<div class="q-body md">${md(q.body)}</div>` : ""}
