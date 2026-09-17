@@ -897,7 +897,8 @@ const ICONS = {
   due: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
   cross: '<circle cx="12" cy="12" r="8.5"/><path d="M15 9l-6 6M9 9l6 6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
-  back: '<path d="M15 5l-7 7 7 7"/>'
+  back: '<path d="M15 5l-7 7 7 7"/>',
+  marker: '<path d="M15 4l5 5-8 8H7v-5z"/><path d="M7 17l-3 3"/><path d="M4 21h9"/>'
 };
 function ico(name) {
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -976,7 +977,8 @@ function openRangeSheet(name) {
           ? `<a class="btn primary" href="#q/${quiz.id}">표 풀기</a>`
           : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>
              ${s.weak ? `<button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="weak">틀린 것만 ${s.weak}</button>` : ""}
-             <a class="btn ghost" href="#q/${quiz.id}">한 페이지로</a>`}
+             <a class="btn ghost" href="#q/${quiz.id}">한 페이지로</a>
+             <a class="btn ghost" href="#q/${encodeURIComponent(quiz.id)}/heat">형광펜 보기</a>`}
       </div>
     </div>`;
   }).join("");
@@ -1204,6 +1206,10 @@ function homeMainHtml() {
         /* 내 세트는 줄에서 바로 고칠 수 있게 연필을 붙인다. 단추 안에 단추를 넣을 수
            없어서 줄을 감싸고 옆에 세운다 */
         const my = quizzes.length === 1 && quizzes[0].kind === "my" ? quizzes[0] : null;
+        /* 세트가 하나뿐인 영역은 줄을 누르면 곧장 풀기로 들어가서 형광펜 보기로 갈 길이 없었다.
+           카드형은 줄 옆에 형광펜 단추를 늘 붙인다 (표·원문은 열면 모드 탭이 있다) */
+        const heatQ = quizzes.length === 1 && quizzes[0].kind !== "ct" && quizzes[0].kind !== "won" ? quizzes[0] : null;
+        const heatBtn = heatQ ? `<a class="ibtn" href="#q/${encodeURIComponent(heatQ.id)}/heat" title="형광펜 보기">${ico("marker")}</a>` : "";
         const row = `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
             data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
           <span class="nm">${esc(name)}</span>
@@ -1211,9 +1217,9 @@ function homeMainHtml() {
           ${rc.weak ? `<span class="bdg warn">다시 ${rc.weak}</span>` : ""}
           ${rc.relearn + rc.review ? `<span class="bdg">${rc.relearn + rc.review}</span>` : ""}
         </button>`;
-        if (!my) return row;
-        return `<div class="mrow-my">${row}
-          <button class="ibtn" data-act="set-open" data-id="${esc(my.id)}" title="세트 고치기">${ico("pen")}</button>
+        if (!my && !heatBtn) return row;
+        return `<div class="mrow-my">${row}${heatBtn}
+          ${my ? `<button class="ibtn" data-act="set-open" data-id="${esc(my.id)}" title="세트 고치기">${ico("pen")}</button>` : ""}
         </div>`;
       }).join("")}
       ${ranges.size ? "" : `<p class="mt-empty">이 과목엔 아직 자료가 없어요. '내 세트'로 직접 만들 수 있어요.</p>`}`;
@@ -2633,6 +2639,9 @@ function cardMin(quiz) {
 }
 function setCardMin(id, n) { S.cardMin = S.cardMin || {}; S.cardMin[id] = n; persist(); }
 
+/* 칸이 여럿인 용어 카드(단원 개발 도구 절차 1~4단계처럼)는 **칸마다** 칠한다.
+   카드 하나로 칠하면 네 칸 중 어디서 막히는지가 사라진다. 칸이 틀린 횟수 =
+   그 칸 이름이 놓친 목록(m)에 든 시도 수. 놓친 목록 없이 틀린 시도(채점 없이 '몰랐다')는 전 칸을 센다 */
 function cardHeatItems(quiz) {
   const out = [];
   for (const q of quiz.questions) {
@@ -2640,21 +2649,32 @@ function cardHeatItems(quiz) {
       const id = subId(quiz, q, sub);
       const nm = sub.sn ? `${q.title} · ${sub.sn}`
         : (sub.hideHead ? q.title : `${q.title} · ${sub.no}`);
-      out.push({ id, name: nm, ...ctHeat(id) });
+      if (sub.type === "term" && sub.parts && sub.parts.length > 1) {
+        const h = history(id);
+        sub.parts.forEach((pt, pi) => {
+          const key = pt.label + ": " + pt.accept[0];
+          const w = h.filter(r => r.r !== "O" && (!r.m || r.m.includes(key))).length;
+          out.push({ id, key: id + "#" + pi, name: `${nm} · ${pt.label}`, w, tried: h.length > 0, lv: Math.min(w, 3) });
+        });
+        continue;
+      }
+      out.push({ id, key: id, name: nm, ...ctHeat(id) });
     }
   }
   return out;
 }
-function cardMinCount(quiz, n) { return cardHeatItems(quiz).filter(x => !n || x.w >= n).length; }
+/* 칸별로 칠해도 한 바퀴는 카드 단위로 돈다 → 장 수는 카드 수로 센다 */
+function cardMinCount(quiz, n) { return new Set(cardHeatItems(quiz).filter(x => !n || x.w >= n).map(x => x.id)).size; }
 
 function cardHeatHtml(quiz) {
   const items = cardHeatItems(quiz);
   const min = cardMin(quiz);
   const shown = items.filter(x => !min || x.w >= min).sort((a, b) => b.w - a.w);
-  const wrongN = items.filter(x => x.w).length;
+  const wrongN = new Set(items.filter(x => x.w).map(x => x.id)).size;
+  const shownCards = new Set(shown.map(x => x.id)).size;
   const rows = shown.length
     ? shown.map(x => `<button type="button" class="hcell${x.lv ? " h" + x.lv : x.tried ? "" : " fresh"}"
-        data-act="card-heat" data-sid="${esc(x.id)}" data-name="${esc(x.name)}"
+        data-act="card-heat" data-sid="${esc(x.id)}" data-key="${esc(x.key)}" data-name="${esc(x.name)}"
         title="${esc(!x.tried ? "아직 안 푼 카드" : !x.w ? "틀린 적 없어요" : x.w + "번 틀렸어요")}"
         >${esc(x.name)}${x.w ? `<span class="hn">${x.w}</span>` : ""}</button>`).join("")
     : `<p class="mt-empty">${min}번 이상 틀린 카드가 아직 없어요. 단계를 낮춰 보세요.</p>`;
@@ -2670,8 +2690,8 @@ function cardHeatHtml(quiz) {
         <button class="ck" data-act="card-min" data-min="${n}"
           aria-pressed="${min === n}">${label}<span class="n">${cardMinCount(quiz, n)}</span></button>`).join("")}</div>
       <div class="cs-row">
-        <button class="btn primary" data-act="card-drill"${shown.length ? "" : " disabled"}
-          >${shown.length}장으로 한 바퀴</button>
+        <button class="btn primary" data-act="card-drill"${shownCards ? "" : " disabled"}
+          >${shownCards}장으로 한 바퀴</button>
       </div>
     </div>
     <section class="q-card card-heat" data-quiz="${esc(quiz.id)}">
@@ -4224,13 +4244,14 @@ function onAppClick(e) {
     const sec = btn.closest(".card-heat");
     if (!sec) return;
     const box = sec.querySelector(".heat-detail");
-    const reopen = box && box.dataset.no === btn.dataset.sid;
+    const key = btn.dataset.key || btn.dataset.sid;   // 칸별로 칠한 카드는 칸마다 열쇠가 다르다
+    const reopen = box && box.dataset.no === key;
     document.querySelectorAll(".hcell.sel").forEach(x => x.classList.remove("sel"));
     document.querySelectorAll(".heat-detail").forEach(x => { x.innerHTML = ""; x.dataset.no = ""; });
     if (reopen) return;                       // 같은 카드를 다시 누르면 닫기
     btn.classList.add("sel");
     if (box) {
-      box.dataset.no = btn.dataset.sid;
+      box.dataset.no = key;
       box.innerHTML = wonHeatDetailHtml(btn.dataset.name || "", btn.dataset.sid);
     }
     return;
@@ -4753,6 +4774,30 @@ document.addEventListener("keydown", e => {
   if (!dir) return;
   e.preventDefault();
   ctMove(t, dir);
+});
+/* 칸이 여럿인 용어 카드(절차 1~4단계): 엔터 = 다음 칸, Shift+엔터 = 앞 칸. 마지막 칸에서는 멈춘다(채점은 단추로).
+   한글을 치다 엔터를 누르면 그 엔터가 조합을 끝내는 데 쓰여 isComposing 으로 온다.
+   그때 무시하면 엔터를 두 번 눌러야 하므로, 조합이 끝난 뒤(compositionend)에 넘긴다 */
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (e.key !== "Enter" || !t.matches || !t.matches("input.answer[data-part]")) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const ins = [...t.closest(".sub").querySelectorAll("input.answer[data-part]")];
+  const to = ins[ins.indexOf(t) + (e.shiftKey ? -1 : 1)];
+  e.preventDefault();
+  if (!to) return;
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    t.removeEventListener("compositionend", later);
+    to.focus(); to.setSelectionRange(to.value.length, to.value.length);
+  };
+  const later = () => setTimeout(go, 0);
+  if (e.isComposing || e.keyCode === 229) {
+    t.addEventListener("compositionend", later, { once: true });
+    setTimeout(go, 150);   // compositionend 가 안 오는 입력기에서도 걸려 있지 않게
+  } else go();
 });
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
 // 화면을 벗어날 때 밀린 백업을 바로 올린다
