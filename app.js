@@ -4537,8 +4537,10 @@ function onAppClick(e) {
       .filter(Boolean).join(" / ");
     /* 이 카드에서 이미 판정을 남겼으면 = 마음을 바꾼 정정. 다음 바퀴에 같은 카드가 다시 나오면
        그때는 새로 그려진 카드라 이 표가 없어 새 시도로 잡힌다 */
-    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "", cterr, wrote,
-      subEl.dataset.done === "1");
+    /* ⚠️ '이미 판정했나'는 표시를 달기 **전에** 읽어 둔다. 9/16 에 기록 정정용으로 여기서 done 을 먼저 달았더니
+       아래 세션 분기(!done)가 늘 거짓이 되어 **채점 후 다음 카드로 안 넘어가고** 골·집계도 안 올랐다 */
+    const again = subEl.dataset.done === "1";
+    record(id, btn.dataset.v, subEl.dataset.suggest || null, missNames, subEl.dataset.rq || "", cterr, wrote, again);
     subEl.dataset.done = "1";
     draftClearSub(id);
     subEl.querySelectorAll(".vbtn").forEach(b => b.classList.toggle("chosen", b === btn));
@@ -4556,8 +4558,7 @@ function onAppClick(e) {
     head.insertAdjacentHTML("beforeend", dotsHtml(id));
     // 세션 모드: 골 카운트 + 다음 카드로 자동 진행
     if (SESSION && location.hash === "#today") {
-      if (!subEl.dataset.done) {
-        subEl.dataset.done = "1";
+      if (!again) {
         bumpGoal();
         SESSION.results[btn.dataset.v]++;
         /* 라운드 집계. ⚠️ 틀린 카드를 여기서 큐 끝에 도로 끼우지 않는다 —
@@ -4575,7 +4576,7 @@ function onAppClick(e) {
       }
       return;
     }
-    if (!subEl.dataset.done) { subEl.dataset.done = "1"; bumpGoal(); }
+    if (!again) bumpGoal();
     // 전체 보기 페이지: 진행 표시 갱신
     if (/^#q\//.test(location.hash)) {
       const total = quiz.questions.reduce((a, q) => a + q.subs.length, 0);
