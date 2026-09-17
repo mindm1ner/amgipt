@@ -2654,7 +2654,8 @@ function cardHeatItems(quiz) {
         sub.parts.forEach((pt, pi) => {
           const key = pt.label + ": " + pt.accept[0];
           const w = h.filter(r => r.r !== "O" && (!r.m || r.m.includes(key))).length;
-          out.push({ id, key: id + "#" + pi, name: `${nm} · ${pt.label}`, w, tried: h.length > 0, lv: Math.min(w, 3) });
+          out.push({ id, key: id + "#" + pi, name: `${nm} · ${pt.accept[0]}`, group: nm, pi, text: pt.accept[0],
+            w, tried: h.length > 0, lv: Math.min(w, 3) });
         });
         continue;
       }
@@ -2672,11 +2673,24 @@ function cardHeatHtml(quiz) {
   const shown = items.filter(x => !min || x.w >= min).sort((a, b) => b.w - a.w);
   const wrongN = new Set(items.filter(x => x.w).map(x => x.id)).size;
   const shownCards = new Set(shown.map(x => x.id)).size;
-  const rows = shown.length
-    ? shown.map(x => `<button type="button" class="hcell${x.lv ? " h" + x.lv : x.tried ? "" : " fresh"}"
+  const cell = (x, label) => `<button type="button" class="hcell${x.lv ? " h" + x.lv : x.tried ? "" : " fresh"}"
         data-act="card-heat" data-sid="${esc(x.id)}" data-key="${esc(x.key)}" data-name="${esc(x.name)}"
-        title="${esc(!x.tried ? "아직 안 푼 카드" : !x.w ? "틀린 적 없어요" : x.w + "번 틀렸어요")}"
-        >${esc(x.name)}${x.w ? `<span class="hn">${x.w}</span>` : ""}</button>`).join("")
+        title="${esc(!x.tried ? "아직 안 푼 칸" : !x.w ? "틀린 적 없어요" : x.w + "번 틀렸어요")}"
+        >${label}${x.w ? `<span class="hn">${x.w}</span>` : ""}</button>`;
+  /* 칸별로 칠하는 카드는 단권화처럼 **내용을 펴서** 칠한다: 카드 이름 아래 ① 내용 ② 내용 …
+     '1단계'만 적어 두면 무엇을 틀렸는지 다시 눌러 봐야 안다. 순서도 흩지 않는다(절차는 순서가 곧 내용) */
+  const groups = new Map();
+  for (const x of items) if (x.group) {
+    if (!groups.has(x.id)) groups.set(x.id, { title: x.group, parts: [] });
+    groups.get(x.id).parts.push(x);
+  }
+  const shownIds = new Set(shown.map(x => x.id));
+  const grpHtml = [...groups.entries()].filter(([id]) => shownIds.has(id))
+    .sort((a, b) => Math.max(...b[1].parts.map(x => x.w)) - Math.max(...a[1].parts.map(x => x.w)))
+    .map(([, g]) => `<div class="hgrp"><div class="hg-t">${esc(g.title)}</div>
+        ${g.parts.map(x => cell(x, `<span class="hg-n">${"①②③④⑤⑥⑦⑧⑨⑩"[x.pi] || x.pi + 1}</span>${esc(x.text)}`)).join("")}</div>`).join("");
+  const rows = shown.length
+    ? grpHtml + shown.filter(x => !x.group).map(x => cell(x, esc(x.name))).join("")
     : `<p class="mt-empty">${min}번 이상 틀린 카드가 아직 없어요. 단계를 낮춰 보세요.</p>`;
   return `<div class="heat-lgd">
       <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>

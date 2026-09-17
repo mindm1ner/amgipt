@@ -963,6 +963,12 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .chl { display: grid; gap: 3px; }
 .chl .hcell { font-size: .84rem; margin-bottom: 0; }
 .chl .mt-empty { margin: 8px 2px; }
+/* 칸별로 칠하는 카드: 카드 이름 아래 내용을 번호 붙여 편다 (단권화 한 덩이처럼) */
+.chl .hgrp { display: grid; gap: 2px; padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+.chl .hgrp:last-child { border-bottom: 0; }
+.chl .hg-t { font-size: .8rem; font-weight: 700; color: var(--ink); margin: 0 2px 3px; }
+.chl .hgrp .hcell { padding-left: 8px; }
+.chl .hg-n { display: inline-block; width: 1.3em; color: var(--faint); font-weight: 600; }
 
 .hclean > summary { cursor: pointer; list-style: none; font-size: .78rem; color: var(--sub);
   padding: 4px 2px; }
