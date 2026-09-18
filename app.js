@@ -804,13 +804,36 @@ function toggleMic(subEl, btn) {
   MIC = { rec, btn };
 }
 
-/* 답안 초안 자동저장: 쓰다가 나가도 안 사라진다. 판정 확정 시 지운다 */
+/* 답안 초안 자동저장: 쓰다가 나가도 안 사라진다. 판정 확정 시 지운다.
+   ⭐ 초안은 **그 시도 안에서만** 살아 있어야 한다. 복습으로 같은 카드를 다시 만났는데 지난번에 쓴
+   답이 칸에 남아 있으면 인출이 아니라 읽기가 된다 (2026-09-18 채영님 신고). 판정을 눌러야만
+   지워지게 해 뒀던 게 원인 — 채점만 하고 넘어가거나 세션을 덮으면 초안이 그대로 남았다.
+   그래서 초안에 쓴 시각을 같이 담고, 되살릴 때 두 가지를 본다:
+     1) 이 카드의 마지막 판정보다 오래된 초안이면 지난 시도의 것이다 → 안 되살린다
+     2) 아예 오래된 것(DRAFT_TTL)도 안 되살린다 — 판정을 한 번도 안 누른 카드의 받이
+   옛 형식(값만 있고 시각이 없는 문자열)은 언제 쓴 건지 알 수 없으니 전부 지난 것으로 본다.
+   그동안 쌓여 있던 찌꺼기 초안이 이때 한 번에 비워진다. */
 const DRAFT_KEY = "dajigi_drafts";
+const DRAFT_TTL = 12 * 60 * 60 * 1000;   // 12시간. 자다 깨서 이어 쓰는 건 이미 새 인출이다
 let DRAFTS = {};
 try { DRAFTS = JSON.parse(localStorage.getItem(DRAFT_KEY)) || {}; } catch { DRAFTS = {}; }
-function draftGet(k) { return DRAFTS[k] || ""; }
+function draftFresh(d) { return !!(d && typeof d === "object" && d.t && Date.now() - d.t <= DRAFT_TTL); }
+/* 올라올 때 한 번 쓸어낸다 (옛 형식·시효 지난 것) */
+(() => {
+  const dead = Object.keys(DRAFTS).filter(k => !draftFresh(DRAFTS[k]));
+  if (!dead.length) return;
+  for (const k of dead) delete DRAFTS[k];
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(DRAFTS));
+})();
+function draftGet(k, subId) {
+  const d = DRAFTS[k];
+  if (!draftFresh(d)) return "";
+  const last = subId ? latest(subId) : null;
+  if (last && last.t && last.t >= d.t) return "";   // 지난 시도에 쓴 것
+  return d.v || "";
+}
 function draftSet(k, v) {
-  if (v) DRAFTS[k] = v; else delete DRAFTS[k];
+  if (v) DRAFTS[k] = { v, t: Date.now() }; else delete DRAFTS[k];
   localStorage.setItem(DRAFT_KEY, JSON.stringify(DRAFTS));
 }
 function draftClearSub(id) {
@@ -1469,7 +1492,7 @@ function subBlockHtml(quiz, q, sub, qi, si) {
         <li>
           <div class="fq-q">${esc(r.q || "")}</div>
           <div class="ta-wrap">
-            <textarea class="answer" data-fq="${i}" placeholder="이 질문만 짧게">${esc(draftGet(id + "#fq" + i))}</textarea>
+            <textarea class="answer" data-fq="${i}" placeholder="이 질문만 짧게">${esc(draftGet(id + "#fq" + i, id))}</textarea>
             ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
           </div>
         </li>`).join("")}</ol>`;
@@ -1490,11 +1513,11 @@ function subBlockHtml(quiz, q, sub, qi, si) {
     /* 순서 무관 카드는 칸 번호를 안 보여 준다 — ①이 붙어 있으면 그 자리에 그 답을 써야 하는 줄 안다 */
     inputHtml = sub.parts.map((p, pi) => `
       <div class="part-row"><span class="plabel">${esc(sub.anyOrder ? "·" : p.label)}</span>
-      <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
+      <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi, id))}"></div>`).join("");
   } else if (sub.type === "essay" && !fqMode) {
     const ph = fg ? "놓쳤던 포인트만 짧게" : (sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)");
     inputHtml = `<div class="ta-wrap">
-      <textarea class="answer" placeholder="${esc(ph)}">${esc(draftGet(id))}</textarea>
+      <textarea class="answer" placeholder="${esc(ph)}">${esc(draftGet(id, id))}</textarea>
       ${MIC_OK ? `<button class="micbtn" data-act="mic" title="음성으로 답변 쓰기">${ico("mic")}</button>` : ""}
     </div>`;
   }
