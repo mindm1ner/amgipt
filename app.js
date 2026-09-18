@@ -948,8 +948,12 @@ function rangeGroups() {
   return map;
 }
 
-function openRangeSheet(name) {
-  const quizzes = (rangeGroups().get(name)) || [];
+function openRangeSheet(name, subject) {
+  /* ⚠️ 같은 이름의 영역이 과목마다 있을 수 있다(미술 '모형'·수학 '모형').
+     이름만으로 모으면 남의 과목 세트가 딸려 오므로 과목으로 한 번 더 거른다.
+     subject 없이 부르면 예전처럼 이름만으로 모은다(다른 호출부가 생겨도 안 깨지게) */
+  let quizzes = (rangeGroups().get(name)) || [];
+  if (subject) quizzes = quizzes.filter(q => q.subject === subject);
   if (!quizzes.length) return;
   /* 같은 모드가 둘 이상이면(미술 원문이 성취기준·안내서 둘) 이름만으로는 못 가른다.
      그럴 때만 어디서 온 자료인지를 붙인다 */
@@ -1220,7 +1224,7 @@ function homeMainHtml() {
            카드형은 줄 옆에 형광펜 단추를 늘 붙인다 (표·원문은 열면 모드 탭이 있다) */
         const heatQ = quizzes.length === 1 && quizzes[0].kind !== "ct" && quizzes[0].kind !== "won" ? quizzes[0] : null;
         const heatBtn = heatQ ? `<a class="ibtn" href="#q/${encodeURIComponent(heatQ.id)}/heat" title="형광펜 보기">${ico("marker")}</a>` : "";
-        const row = `<button class="mrow click" data-act="open-range" data-range="${esc(name)}"
+        const row = `<button class="mrow click" data-act="open-range" data-range="${esc(name)}" data-subject="${esc(s)}"
             data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
           <span class="nm">${esc(name)}</span>
           <span class="cnt">${won ? "원문 " + pages + "쪽" : rc.all + "장"}</span>
@@ -4463,7 +4467,7 @@ function onAppClick(e) {
       }
       return;
     }
-    openRangeSheet(btn.dataset.range);
+    openRangeSheet(btn.dataset.range, btn.dataset.subject);
     return;
   }
   if (act === "close-sheet") {
