@@ -867,8 +867,18 @@ function sim2(a, b) {
   return tot > 0 ? (2 * hit) / tot : 0;
 }
 
-function judgeTerm(inputs, parts) {
-  return parts.map((p, i) => p.accept.some(a => norm(a) === norm(inputs[i]) && norm(inputs[i]) !== ""));
+/* 순서가 없는 카드(청킹북 국어·실과처럼 나열이 그냥 목록인 것)는 anyOrder.
+   쓴 답을 아직 안 맞은 칸에 하나씩 붙여 본다 — 어느 칸에 썼든 내용만 맞으면 그 칸이 ✓.
+   판정 결과는 자리(입력 칸)가 아니라 parts 차례 그대로 돌려준다(형광펜·집중 인출 열쇠가 칸 이름이라서) */
+function judgeTerm(inputs, parts, anyOrder) {
+  if (!anyOrder) return parts.map((p, i) => p.accept.some(a => norm(a) === norm(inputs[i]) && norm(inputs[i]) !== ""));
+  const hit = parts.map(() => false);
+  for (const v of inputs) {
+    if (norm(v) === "") continue;
+    const i = parts.findIndex((p, k) => !hit[k] && p.accept.some(a => norm(a) === norm(v)));
+    if (i >= 0) hit[i] = true;
+  }
+  return hit;
 }
 function judgeEssay(input, groups) {
   const n = norm(input);
@@ -1473,8 +1483,9 @@ function subBlockHtml(quiz, q, sub, qi, si) {
   }
   let inputHtml = "";
   if (sub.type === "term") {
+    /* 순서 무관 카드는 칸 번호를 안 보여 준다 — ①이 붙어 있으면 그 자리에 그 답을 써야 하는 줄 안다 */
     inputHtml = sub.parts.map((p, pi) => `
-      <div class="part-row"><span class="plabel">${esc(p.label)}</span>
+      <div class="part-row"><span class="plabel">${esc(sub.anyOrder ? "·" : p.label)}</span>
       <input class="answer" data-part="${pi}" autocomplete="off" placeholder="용어만" value="${esc(draftGet(id + "#" + pi))}"></div>`).join("");
   } else if (sub.type === "essay" && !fqMode) {
     const ph = fg ? "놓쳤던 포인트만 짧게" : (sub.ph || "한 문장으로 써 보세요 (입력 없이 정답만 봐도 돼요)");
@@ -3718,7 +3729,7 @@ function showReveal(subEl, graded) {
 
   if (graded && sub.type === "term") {
     const inputs = [...subEl.querySelectorAll("input.answer")].map(i => i.value);
-    const flags = judgeTerm(inputs, sub.parts);
+    const flags = judgeTerm(inputs, sub.parts, sub.anyOrder);
     suggest = suggestFrom(flags);
     judgeHtml = '<div class="kw-chips">' + sub.parts.map((p, i) => {
       const nm = p.label + ": " + p.accept[0];
