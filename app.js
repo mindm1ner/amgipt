@@ -4801,15 +4801,32 @@ document.addEventListener("keydown", e => {
   e.preventDefault();
   ctMove(t, dir);
 });
-/* 칸이 여럿인 용어 카드(절차 1~4단계): 엔터 = 다음 칸, Shift+엔터 = 앞 칸. 마지막 칸에서는 멈춘다(채점은 단추로).
+/* 칸이 여럿인 용어 카드(절차 1~4단계, 청킹북·미술 모형): 칸 사이를 손 안 떼고 오간다.
+   엔터·↓ = 다음 칸, ↑ = 앞 칸 (마지막·첫 칸에서는 멈춘다).
+   ⭐ Shift+엔터 = 채점하기. 예전엔 Shift+엔터가 '앞 칸'이었는데, 위로 가는 건 ↑ 가 맡고
+   마지막 칸에서 마우스로 단추를 찾아가는 게 번거로워 채점에 내줬다.
    한글을 치다 엔터를 누르면 그 엔터가 조합을 끝내는 데 쓰여 isComposing 으로 온다.
-   그때 무시하면 엔터를 두 번 눌러야 하므로, 조합이 끝난 뒤(compositionend)에 넘긴다 */
+   그때 무시하면 엔터를 두 번 눌러야 하므로, 조합이 끝난 뒤(compositionend)에 넘긴다.
+   채점은 되돌리기 어려우니 조합 중인 Shift+엔터는 글자를 맺기만 하고 흘려보낸다(한 번 더 누르면 채점) */
 document.addEventListener("keydown", e => {
   const t = e.target;
-  if (e.key !== "Enter" || !t.matches || !t.matches("input.answer[data-part]")) return;
+  if (!t.matches || !t.matches("input.answer[data-part]")) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
-  const ins = [...t.closest(".sub").querySelectorAll("input.answer[data-part]")];
-  const to = ins[ins.indexOf(t) + (e.shiftKey ? -1 : 1)];
+  const subEl = t.closest(".sub");
+  if (!subEl) return;
+  if (e.key === "Enter" && e.shiftKey) {
+    if (e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    const btn = subEl.querySelector('.sub-actions [data-act="grade"]');
+    if (btn) btn.click();
+    return;
+  }
+  let step = 0;
+  if (e.key === "Enter" || e.key === "ArrowDown") step = 1;
+  else if (e.key === "ArrowUp") step = -1;
+  if (!step) return;
+  const ins = [...subEl.querySelectorAll("input.answer[data-part]")];
+  const to = ins[ins.indexOf(t) + step];
   e.preventDefault();
   if (!to) return;
   let done = false;
