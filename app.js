@@ -878,6 +878,18 @@ function buildStamp() {
     : v;
 }
 
+/* ---------- 발문 시기별 선택 ----------
+   영어교육론 원문 빈칸처럼 소문항이 `prompts`(발문 여러 벌)를 들고 오면 고른 것을 보여 준다.
+   문제·정답은 같고 조건(앞글자·단어 수)만 바뀐다. 설정은 하나라 퀴즈 화면·오늘의 복습이 같이 따른다 */
+const PROMPT_STYLES = [["orig", "제작본"], ["y12", "2012~14 조건 없음"], ["y15", "2015~17 앞글자"],
+  ["y18", "2018~23 앞글자+단어 수"], ["y24", "2024~26 단어 수만"]];
+function promptStyle() { return S.promptStyle || "orig"; }
+function subPrompt(sub) { return sub.prompts ? (sub.prompts[promptStyle()] || sub.prompt) : sub.prompt; }
+function pstyleRowHtml(cls) {
+  return `<div class="pstyle ${cls}"><span class="pstyle-lab">발문</span>${PROMPT_STYLES.map(([k, l]) =>
+    `<button type="button" data-act="pstyle" data-k="${k}" aria-pressed="${k === promptStyle()}">${l}</button>`).join("")}</div>`;
+}
+
 /* ---------- 판정(고정 코드) ---------- */
 function norm(s) {
   return (s || "").toLowerCase()
@@ -928,6 +940,7 @@ const $ = sel => document.querySelector(sel);
 /* 단색 스트로크 아이콘 (이모지 대신) */
 const ICONS = {
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>',
+  grid: '<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 10h16M4 15h16M10 4v16"/>',
   recall: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/>',
   bolt: '<polygon points="13 2 3 14 11 14 10 22 21 9 13 9 13 2" fill="currentColor" stroke="none"/>',
   pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
@@ -1009,7 +1022,8 @@ function openRangeSheet(name, subject) {
       review: ["recall", "복습 모드"],
       exam: ["doc", "기출 모드"]
     };
-    const [icon, name] = META[kind] || META.exam;
+    const [icon, base] = META[kind] || META.exam;
+    const name = quiz.modeName || base;   // 세트가 제 이름을 들고 오면 그것 (영어교육론 '원문 빈칸'은 기출이 아니다)
     /* 세트 "풀기"를 하다 나갔으면 그 자리부터 (saveSess) */
     const rs = sessResumeInfo(quiz.id);
     const label = dup.has(kind) ? `${name} · ${quiz.subject}` : name;
@@ -1555,7 +1569,8 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       ? (dotsHtml(id) ? `<div class="sub-head">${dotsHtml(id)}</div>` : "")
       : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
         ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
-    ${sub.prompt ? `<div class="sub-prompt md">${md(sub.prompt)}</div>` : ""}
+    ${sub.prompts && !/^#q\//.test(location.hash) ? pstyleRowHtml("pstyle-in") : ""}
+    ${subPrompt(sub) ? `<div class="sub-prompt md">${md(subPrompt(sub))}</div>` : ""}
     ${focusHtml}
     ${relearnHtml}
     <div class="sub-input">${inputHtml}</div>
@@ -3255,6 +3270,7 @@ function renderQuiz(quizId, weakOnly, heat) {
         >${quiz.kind === "ct" ? "표로 보기" : "형광펜 보기"}</a>
     </div>` : ""}
     ${quiz.kind === "ct" && !isHeat ? ctScopeHtml(quiz) : ""}
+    ${quiz.promptStyles && !isHeat ? pstyleRowHtml("pstyle-top") : ""}
     ${(quiz.rules && quiz.rules.length) ? `<details class="rules"><summary>답안 규칙 (기출 채점 방식)</summary>
       <ul>${quiz.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </details>` : ""}
@@ -4347,6 +4363,20 @@ function onAppClick(e) {
     if (!set.size) return;   // 하나는 켜 둔다. 다 끄면 풀 게 없다
     setCtCats(quiz.range, set);
     renderQuiz(quiz.id, false);
+    return;
+  }
+  /* 발문 시기 바꾸기: 다시 그리지 않고 발문 글만 갈아 끼운다(쓰던 답이 날아가지 않게) */
+  if (act === "pstyle") {
+    S.promptStyle = btn.dataset.k;
+    persist();
+    document.querySelectorAll(".sub[data-quiz]").forEach(el => {
+      const quiz = DATA.find(d => d.id === el.dataset.quiz);
+      const sub = quiz && quiz.questions[+el.dataset.q] && quiz.questions[+el.dataset.q].subs[+el.dataset.s];
+      const box = el.querySelector(".sub-prompt");
+      if (sub && sub.prompts && box) box.innerHTML = md(subPrompt(sub));
+    });
+    document.querySelectorAll(".pstyle button").forEach(b =>
+      b.setAttribute("aria-pressed", String(b.dataset.k === promptStyle())));
     return;
   }
   if (act === "ct-min") {

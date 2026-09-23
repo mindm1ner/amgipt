@@ -1057,3 +1057,12 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .mrow-my { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
 .mrow-my .mrow { border-bottom: 0; }
 .mrow-my .ibtn { flex-shrink: 0; }
+
+/* 발문 시기별 선택 (영어교육론 원문 빈칸) */
+.pstyle { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; }
+.pstyle-lab { font-size: 12.5px; font-weight: 700; color: var(--sub); margin-right: 2px; white-space: nowrap; }
+.pstyle button { font: inherit; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--line); background: var(--card); color: inherit; }
+.pstyle button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.pstyle-in { margin: 2px 0 8px; }
+.pstyle-in button { font-size: 11.5px; padding: 2px 8px; }
