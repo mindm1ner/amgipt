@@ -267,7 +267,9 @@ for (const set of (window.DAJIGI_CT || [])) {
            고 물을 수밖에 없다. 그때는 어느 것을 써도 맞다 (첫 번째가 모범답안) */
         parts: [{ label: [s.cat.replace("⋅", "·"), s.gr].filter(Boolean).join(" · "),
                   accept: s.alt && s.alt.length ? s.alt : [s.a] }],
-        ct: { cat: s.cat, gr: s.gr, g: s.g }
+        /* syn = 같은 뜻의 다른 표기(영어 용어의 별칭 zero position 등). alt 와 달리
+           표 안 채점에서도 그 칸의 정답으로 받는다 */
+        ct: { cat: s.cat, gr: s.gr, g: s.g, syn: s.syn || [] }
       }))
     }))
   });
@@ -1704,7 +1706,8 @@ function ctTableHtml(quiz, q, qi) {
     const w = narrow
       ? ` style="width:${Math.min(e.s.answer.length, 15) + 3.4}em"` : "";
     return `<div class="ctb${narrow ? " ctb-sm" : ""}"${w}
-      data-sid="${esc(id)}" data-ans="${esc(e.s.answer)}">
+      data-sid="${esc(id)}" data-ans="${esc(e.s.answer)}"${
+        e.s.ct && e.s.ct.syn && e.s.ct.syn.length ? ` data-syn="${esc(e.s.ct.syn.join("|"))}"` : ""}>
       <input type="text" class="ctin" aria-label="내용 요소 빈칸" autocomplete="off" spellcheck="false">
       <button class="ctmark" data-act="ct-mark" aria-label="판정 바꾸기"
         >${l ? (l.r === "O" ? "O" : l.r === "X" ? "X" : "△") : ""}</button>
@@ -4431,7 +4434,8 @@ function onAppClick(e) {
         for (const b of list) {
           const v = norm(b.querySelector(".ctin").value);
           const a = b.dataset.ans;
-          if (v && v === norm(a)) { hitSet.add(b); eff.set(b, a); continue; }
+          const syn = (b.dataset.syn || "").split("|").filter(Boolean).map(norm);
+          if (v && (v === norm(a) || syn.includes(v))) { hitSet.add(b); eff.set(b, a); continue; }
           left.push({ b, v });
           pool.push(a);
         }

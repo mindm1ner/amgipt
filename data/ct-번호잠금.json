@@ -1445,6 +1445,599 @@
    "표현(production)": 2
   }
  },
+ "ct-영어교육론-교사언어": {
+  "blanks": {
+   "(1) 질문 유형 · 질문 유형": {
+    "closed question#1": 3,
+    "display question#1": 1,
+    "open question#1": 4,
+    "referential question#1": 2
+   },
+   "(2) 영어로 하는 영어 수업 · TEE": {
+    "Teaching English in English#1": 1,
+    "modeling#1": 3,
+    "routine#1": 2
+   }
+  },
+  "questions": {
+   "(1) 질문 유형 · 질문 유형": 1,
+   "(2) 영어로 하는 영어 수업 · TEE": 2
+  }
+ },
+ "ct-영어교육론-기능별언어지도": {
+  "blanks": {
+   "(1) 기능별 공통 · 2022 개정 · 내용 영역": {
+    "presenting#1": 4,
+    "production#1": 3,
+    "reception#1": 1,
+    "viewing#1": 2
+   },
+   "(1) 기능별 공통 · 교수-학습 필요 요소": {
+    "content schema#1": 2,
+    "formal schema#1": 3,
+    "personalization#1": 4,
+    "schema#1": 1
+   },
+   "(1) 기능별 공통 · 유창성과 정확성": {
+    "accuracy#1": 3,
+    "fluency#1": 1,
+    "language usage#1": 4,
+    "language use#1": 2
+   },
+   "(1) 기능별 공통 · 컴퓨터와 수업": {
+    "Computer-Assisted Language Learning#1": 1,
+    "Computer-Mediated Communication#1": 2,
+    "asynchronous#1": 4,
+    "blended learning#1": 5,
+    "flipped learning#1": 6,
+    "synchronous#1": 3
+   },
+   "(2) 이해 (reception) · 듣기 유형": {
+    "extensive listening#1": 4,
+    "intensive listening#1": 3,
+    "interactive listening#1": 6,
+    "reactive listening#1": 1,
+    "responsive listening#1": 2,
+    "retelling#1": 7,
+    "selective listening#1": 5
+   },
+   "(2) 이해 (reception) · 음철법 · 파닉스": {
+    "blend#1": 5,
+    "coda#1": 11,
+    "decoding#1": 2,
+    "digraph#1": 4,
+    "nucleus#1": 10,
+    "onset#1": 8,
+    "phonemic awareness#1": 3,
+    "phonics#1": 1,
+    "rhyme#1": 9,
+    "sight word#1": 6,
+    "syllable#1": 7
+   },
+   "(2) 이해 (reception) · 이해 과정": {
+    "bottom-up processing#1": 1,
+    "interactive processing#1": 3,
+    "top-down processing#1": 2
+   },
+   "(2) 이해 (reception) · 읽기 · 이해의 단계": {
+    "creative comprehension#1": 4,
+    "critical comprehension#1": 3,
+    "inferential comprehension#1": 2,
+    "literal comprehension#1": 1
+   },
+   "(2) 이해 (reception) · 읽기 유형": {
+    "extensive reading#1": 2,
+    "intensive reading#1": 1,
+    "reading aloud#1": 3,
+    "silent reading#1": 4
+   },
+   "(2) 이해 (reception) · 읽기 전략": {
+    "scanning#1": 1,
+    "semantic mapping#1": 3,
+    "skimming#1": 2,
+    "thinking aloud#1": 4
+   },
+   "(2) 이해 (reception) · 파닉스 · 텍스트와 지도 방법": {
+    "decodable text#1": 1,
+    "dictated stories#1": 4,
+    "guided reading#1": 7,
+    "independent reading#1": 8,
+    "predictable text#1": 2,
+    "shared reading#1": 6,
+    "sustained silent reading#1": 5,
+    "trade books#1": 3
+   },
+   "(3) 표현 (production) · 말하기 · PPP 수업 모형": {
+    "chorus work#1": 4,
+    "controlled practice#1": 3,
+    "cue-response practice#1": 5,
+    "guided practice#1": 6,
+    "practice#1": 2,
+    "presentation#1": 1,
+    "production#1": 7
+   },
+   "(3) 표현 (production) · 말하기 · 드릴 (Paulston)": {
+    "communicative drill#1": 3,
+    "meaningful drill#1": 2,
+    "mechanical drill#1": 1
+   },
+   "(3) 표현 (production) · 말하기 · 오류 유형과 원인": {
+    "developmental error#1": 5,
+    "global error#1": 1,
+    "interference error#1": 3,
+    "interlingual transfer#1": 4,
+    "intralingual transfer#1": 6,
+    "local error#1": 2
+   },
+   "(3) 표현 (production) · 말하기 · 오류 처리 (Lyster & Ranta)": {
+    "clarification request#1": 5,
+    "elicitation#1": 6,
+    "explicit correction#1": 1,
+    "metalinguistic feedback#1": 3,
+    "recast#1": 2,
+    "repetition#1": 4
+   },
+   "(3) 표현 (production) · 말하기 · 중간 언어": {
+    "U-shaped learning#1": 7,
+    "backsliding#1": 4,
+    "emergent stage#1": 3,
+    "fossilization#1": 11,
+    "interlanguage#1": 1,
+    "overgeneralization#1": 5,
+    "postsystematic stage#1": 9,
+    "presystematic stage#1": 2,
+    "restructuring#1": 6,
+    "self-correction#1": 10,
+    "systematic stage#1": 8
+   },
+   "(3) 표현 (production) · 말하기 · 학습자 반응 (uptake)": {
+    "acknowledgment#1": 7,
+    "incorporation#1": 5,
+    "needs-repair#1": 6,
+    "off-target#1": 8,
+    "peer-repair#1": 4,
+    "repair#1": 2,
+    "self-repair#1": 3,
+    "uptake#1": 1
+   }
+  },
+  "questions": {
+   "(1) 기능별 공통 · 2022 개정 · 내용 영역": 4,
+   "(1) 기능별 공통 · 교수-학습 필요 요소": 1,
+   "(1) 기능별 공통 · 유창성과 정확성": 2,
+   "(1) 기능별 공통 · 컴퓨터와 수업": 3,
+   "(2) 이해 (reception) · 듣기 유형": 6,
+   "(2) 이해 (reception) · 음철법 · 파닉스": 10,
+   "(2) 이해 (reception) · 이해 과정": 5,
+   "(2) 이해 (reception) · 읽기 · 이해의 단계": 7,
+   "(2) 이해 (reception) · 읽기 유형": 9,
+   "(2) 이해 (reception) · 읽기 전략": 8,
+   "(2) 이해 (reception) · 파닉스 · 텍스트와 지도 방법": 11,
+   "(3) 표현 (production) · 말하기 · PPP 수업 모형": 13,
+   "(3) 표현 (production) · 말하기 · 드릴 (Paulston)": 12,
+   "(3) 표현 (production) · 말하기 · 오류 유형과 원인": 15,
+   "(3) 표현 (production) · 말하기 · 오류 처리 (Lyster & Ranta)": 16,
+   "(3) 표현 (production) · 말하기 · 중간 언어": 14,
+   "(3) 표현 (production) · 말하기 · 학습자 반응 (uptake)": 17
+  }
+ },
+ "ct-영어교육론-언어습득이론": {
+  "blanks": {
+   "(1) 모국어 습득 이론 · 세 관점": {
+    "Language Acquisition Device#1": 4,
+    "behaviorism#1": 1,
+    "constructivism#1": 5,
+    "habit formation#1": 2,
+    "nativism#1": 3
+   },
+   "(2) 제2 언어 습득 이론 · Krashen · 다섯 가설": {
+    "Acquisition-Learning Hypothesis#1": 1,
+    "Affective Filter Hypothesis#1": 9,
+    "Input Hypothesis#1": 6,
+    "Monitor Hypothesis#1": 5,
+    "Natural Order Hypothesis#1": 10,
+    "acquisition#1": 2,
+    "comprehensible input#1": 7,
+    "learning#1": 3,
+    "non-interface position#1": 4,
+    "silent period#1": 8
+   },
+   "(2) 제2 언어 습득 이론 · Long · 상호작용 가설": {
+    "Interaction Hypothesis#1": 1,
+    "clarification request#1": 5,
+    "comprehension check#1": 3,
+    "confirmation check#1": 4,
+    "meaning negotiation#1": 2
+   },
+   "(2) 제2 언어 습득 이론 · Swain · 출력 가설": {
+    "Output Hypothesis#1": 1,
+    "hypothesis-testing#1": 4,
+    "metalinguistic#1": 5,
+    "noticing#1": 3,
+    "pushed output#1": 2
+   },
+   "(2) 제2 언어 습득 이론 · Vygotsky · 사회문화 이론": {
+    "Sociocultural Theory#1": 1,
+    "Zone of Proximal Development#1": 2,
+    "actual developmental level#1": 3,
+    "inner speech#1": 7,
+    "potential developmental level#1": 4,
+    "private speech#1": 6,
+    "scaffolding#1": 5
+   }
+  },
+  "questions": {
+   "(1) 모국어 습득 이론 · 세 관점": 1,
+   "(2) 제2 언어 습득 이론 · Krashen · 다섯 가설": 2,
+   "(2) 제2 언어 습득 이론 · Long · 상호작용 가설": 4,
+   "(2) 제2 언어 습득 이론 · Swain · 출력 가설": 3,
+   "(2) 제2 언어 습득 이론 · Vygotsky · 사회문화 이론": 5
+  }
+ },
+ "ct-영어교육론-영어교수법": {
+  "blanks": {
+   "(1) 교수법의 흐름 · 의사소통 중심 교수법": {
+    "Communicative Language Teaching#1": 1,
+    "coherence#1": 8,
+    "cohesion#1": 7,
+    "communicative competence#1": 4,
+    "communicator#1": 3,
+    "discourse competence#1": 6,
+    "facilitator#1": 2,
+    "grammatical competence#1": 5,
+    "pragmatic rules#1": 10,
+    "sociolinguistic competence#1": 9,
+    "strategic competence#1": 11
+   },
+   "(1) 교수법의 흐름 · 이해 중심 교수법": {
+    "Natural Approach#1": 3,
+    "Total Physical Response#1": 2,
+    "comprehension-based approach#1": 1
+   },
+   "(1) 교수법의 흐름 · 전통 교수법": {
+    "Audio-Lingual Method#1": 3,
+    "Direct Method#1": 2,
+    "Grammar-Translation Method#1": 1,
+    "contrastive analysis#1": 4
+   },
+   "(1) 교수법의 흐름 · 청화식 교수법 · 드릴": {
+    "backward build-up drill#1": 4,
+    "chain drill#1": 5,
+    "minimal pair drill#1": 1,
+    "substitution drill#1": 2,
+    "transformation drill#1": 3
+   },
+   "(2) 과업 중심 교수법 · Pica · 과업 유형": {
+    "decision-making task#1": 5,
+    "information-gap task#1": 2,
+    "jigsaw task#1": 1,
+    "opinion exchange task#1": 3,
+    "problem-solving task#1": 4
+   },
+   "(2) 과업 중심 교수법 · Willis 모형 · 절차": {
+    "language focus#1": 3,
+    "pre-task#1": 1,
+    "task cycle#1": 2
+   },
+   "(2) 과업 중심 교수법 · 개념": {
+    "Task-Based Language Teaching#1": 1,
+    "needs analysis#1": 2,
+    "pedagogical task#1": 4,
+    "real-world task#1": 3
+   },
+   "(3) 총체적 교수법 · 개념": {
+    "Whole Language Approach#1": 1,
+    "authenticity#1": 5,
+    "bottom-up approach#1": 3,
+    "skill integration#1": 4,
+    "top-down approach#1": 2
+   }
+  },
+  "questions": {
+   "(1) 교수법의 흐름 · 의사소통 중심 교수법": 4,
+   "(1) 교수법의 흐름 · 이해 중심 교수법": 3,
+   "(1) 교수법의 흐름 · 전통 교수법": 1,
+   "(1) 교수법의 흐름 · 청화식 교수법 · 드릴": 2,
+   "(2) 과업 중심 교수법 · Pica · 과업 유형": 7,
+   "(2) 과업 중심 교수법 · Willis 모형 · 절차": 6,
+   "(2) 과업 중심 교수법 · 개념": 5,
+   "(3) 총체적 교수법 · 개념": 8
+  }
+ },
+ "ct-영어교육론-요소별언어지도": {
+  "blanks": {
+   "(1) 발음 지도 · 목표와 단위": {
+    "grapheme#1": 4,
+    "intelligibility#1": 1,
+    "morpheme#1": 3,
+    "phoneme#1": 2
+   },
+   "(1) 발음 지도 · 분절 음소": {
+    "consonant#1": 2,
+    "meaningful minimal pair#1": 4,
+    "segmental phoneme#1": 1,
+    "vowel#1": 3
+   },
+   "(1) 발음 지도 · 초분절 음소": {
+    "content word#1": 6,
+    "falling intonation#1": 12,
+    "function word#1": 7,
+    "intonation#1": 11,
+    "rhythm#1": 8,
+    "rising intonation#1": 13,
+    "schwa#1": 3,
+    "sentence stress#1": 5,
+    "stress#1": 2,
+    "stress-timed language#1": 10,
+    "suprasegmental phoneme#1": 1,
+    "syllable-timed language#1": 9,
+    "word stress#1": 4
+   },
+   "(2) 어휘 지도 · 덩어리 표현 (chunk)": {
+    "chunk#1": 1,
+    "collocation#1": 5,
+    "discourse marker#1": 6,
+    "idiom#1": 3,
+    "phrasal verb#1": 2,
+    "saying#1": 4,
+    "sentence frame#1": 7
+   },
+   "(2) 어휘 지도 · 선정과 지도": {
+    "check understanding#1": 5,
+    "concordance program#1": 3,
+    "consolidate#1": 6,
+    "convey meaning#1": 4,
+    "corpus#1": 2,
+    "frequency#1": 1
+   },
+   "(2) 어휘 지도 · 식별과 학습": {
+    "explicit learning#1": 3,
+    "immediate identification#1": 1,
+    "implicit learning#1": 4,
+    "mediated identification#1": 2
+   },
+   "(2) 어휘 지도 · 접근과 분류": {
+    "Lexical Approach#1": 1,
+    "active vocabulary#1": 3,
+    "passive vocabulary#1": 2
+   },
+   "(3) 문법 지도 · 입력 기반 · 출력 기반": {
+    "dictogloss#1": 4,
+    "input enhancement#1": 1,
+    "input flooding#1": 2,
+    "input processing#1": 3
+   },
+   "(3) 문법 지도 · 제시 방법": {
+    "concrete operational stage#1": 4,
+    "deductive#1": 2,
+    "form, meaning, use#1": 1,
+    "inductive#1": 3
+   },
+   "(3) 문법 지도 · 형태 초점 교수 (Form-Focused Instruction)": {
+    "Focus on Form#1": 3,
+    "Focus on Forms#1": 1,
+    "Focus on Meaning#1": 2,
+    "consciousness-raising#1": 5,
+    "noticing#1": 4
+   },
+   "(4) 문화 지도 · 문화 간 의사소통": {
+    "audio-motor unit#1": 3,
+    "intercultural communicative competence#1": 1,
+    "intercultural speaker#1": 2
+   }
+  },
+  "questions": {
+   "(1) 발음 지도 · 목표와 단위": 1,
+   "(1) 발음 지도 · 분절 음소": 2,
+   "(1) 발음 지도 · 초분절 음소": 3,
+   "(2) 어휘 지도 · 덩어리 표현 (chunk)": 5,
+   "(2) 어휘 지도 · 선정과 지도": 6,
+   "(2) 어휘 지도 · 식별과 학습": 7,
+   "(2) 어휘 지도 · 접근과 분류": 4,
+   "(3) 문법 지도 · 입력 기반 · 출력 기반": 10,
+   "(3) 문법 지도 · 제시 방법": 8,
+   "(3) 문법 지도 · 형태 초점 교수 (Form-Focused Instruction)": 9,
+   "(4) 문화 지도 · 문화 간 의사소통": 11
+  }
+ },
+ "ct-영어교육론-평가": {
+  "blanks": {
+   "(1) 평가의 요건 · 다섯 요건": {
+    "authenticity#1": 1,
+    "inter-rater reliability#1": 6,
+    "intra-rater reliability#1": 7,
+    "practicality#1": 4,
+    "reliability#1": 5,
+    "validity#1": 3,
+    "washback effect#1": 2
+   },
+   "(2) 평가의 종류 · 목적 (Why)": {
+    "achievement test#1": 2,
+    "diagnostic test#1": 3,
+    "placement test#1": 4,
+    "proficiency test#1": 1
+   },
+   "(2) 평가의 종류 · 방식 (How)": {
+    "cloze test#1": 5,
+    "direct test#1": 1,
+    "discrete-point test#1": 3,
+    "indirect test#1": 2,
+    "integrative test#1": 4
+   },
+   "(2) 평가의 종류 · 수단 (How)": {
+    "analytic rubric#1": 3,
+    "conference#1": 2,
+    "holistic rubric#1": 4,
+    "portfolio#1": 1
+   },
+   "(2) 평가의 종류 · 시기 (When)": {
+    "formative assessment#1": 3,
+    "process-oriented assessment#1": 4,
+    "product-oriented assessment#1": 2,
+    "summative assessment#1": 1
+   },
+   "(2) 평가의 종류 · 주체 (Who)": {
+    "anecdotal report#1": 2,
+    "observation#1": 1,
+    "peer-assessment#1": 5,
+    "self-assessment#1": 4,
+    "teacher's checklist#1": 3
+   },
+   "(3) 수행평가 · 수행평가와 다른 이름": {
+    "alternative assessment#1": 2,
+    "authentic assessment#1": 4,
+    "direct test#1": 3,
+    "performance-based assessment#1": 1
+   }
+  },
+  "questions": {
+   "(1) 평가의 요건 · 다섯 요건": 1,
+   "(2) 평가의 종류 · 목적 (Why)": 2,
+   "(2) 평가의 종류 · 방식 (How)": 4,
+   "(2) 평가의 종류 · 수단 (How)": 6,
+   "(2) 평가의 종류 · 시기 (When)": 3,
+   "(2) 평가의 종류 · 주체 (Who)": 5,
+   "(3) 수행평가 · 수행평가와 다른 이름": 7
+  }
+ },
+ "ct-영어교육론-학습자변인": {
+  "blanks": {
+   "(1) 인지적 요인 · 인지 양식": {
+    "ambiguity tolerance#1": 5,
+    "field dependence#1": 2,
+    "field independence#1": 1,
+    "impulsivity#1": 4,
+    "reflectivity#1": 3,
+    "visual, auditory, and kinesthetic styles#1": 6
+   },
+   "(2) 정의적 요인 · 동기": {
+    "extrinsic motivation#1": 4,
+    "instrumental motivation#1": 1,
+    "integrative motivation#1": 2,
+    "intrinsic motivation#1": 3
+   },
+   "(2) 정의적 요인 · 성격 요인": {
+    "anxiety#1": 2,
+    "debilitating effect#1": 3,
+    "facilitating effect#1": 4,
+    "inhibition#1": 1,
+    "risk-taking#1": 5
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 의사소통 전략 · 보상 (11)": {
+    "appeal for help#1": 10,
+    "approximation#1": 3,
+    "circumlocution#1": 2,
+    "code-switching#1": 6,
+    "compensatory strategies#1": 1,
+    "foreignizing#1": 8,
+    "literal translation#1": 7,
+    "nonlinguistic signals#1": 12,
+    "prefabricated patterns#1": 9,
+    "stalling#1": 11,
+    "use of all-purpose words#1": 5,
+    "word coinage#1": 4
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 의사소통 전략 · 회피": {
+    "avoidance strategies#1": 1,
+    "lexical avoidance#1": 5,
+    "message abandonment#1": 2,
+    "phonological avoidance#1": 6,
+    "syntactic avoidance#1": 4,
+    "topic avoidance#1": 3
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 큰 갈래": {
+    "autonomous learner#1": 2,
+    "communication strategies#1": 4,
+    "learner strategies#1": 1,
+    "learning strategies#1": 3
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 사회 정의적 (2)": {
+    "cooperation#1": 2,
+    "question for clarification#1": 3,
+    "self-talk#1": 4,
+    "socioaffective strategies#1": 1
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 상위 인지 (8)": {
+    "advance organizer#1": 5,
+    "delayed production#1": 7,
+    "directed attention#1": 3,
+    "functional planning#1": 6,
+    "metacognitive strategies#1": 1,
+    "selective attention#1": 4,
+    "self-evaluation#1": 9,
+    "self-management#1": 2,
+    "self-monitoring#1": 8
+   },
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 인지 (14)": {
+    "auditory representation#1": 5,
+    "cognitive strategies#1": 1,
+    "contextualization#1": 9,
+    "deduction#1": 13,
+    "elaboration#1": 10,
+    "grouping#1": 7,
+    "imagery#1": 4,
+    "inferencing#1": 11,
+    "keyword#1": 6,
+    "note-taking#1": 8,
+    "recombination#1": 15,
+    "repetition#1": 3,
+    "resourcing#1": 2,
+    "transfer#1": 14,
+    "translation#1": 12
+   },
+   "(4) Rebecca Oxford 분류 · 간접 전략": {
+    "affective strategies#1": 3,
+    "indirect strategies#1": 1,
+    "metacognitive strategies#1": 2,
+    "social strategies#1": 4
+   },
+   "(4) Rebecca Oxford 분류 · 직접 전략": {
+    "cognitive strategies#1": 3,
+    "compensation strategies#1": 4,
+    "direct strategies#1": 1,
+    "memory strategies#1": 2
+   }
+  },
+  "questions": {
+   "(1) 인지적 요인 · 인지 양식": 1,
+   "(2) 정의적 요인 · 동기": 2,
+   "(2) 정의적 요인 · 성격 요인": 3,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 의사소통 전략 · 보상 (11)": 9,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 의사소통 전략 · 회피": 8,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 큰 갈래": 4,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 사회 정의적 (2)": 7,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 상위 인지 (8)": 5,
+   "(3) 학습자 전략 (O'Malley & Chamot) · 학습 전략 · 인지 (14)": 6,
+   "(4) Rebecca Oxford 분류 · 간접 전략": 11,
+   "(4) Rebecca Oxford 분류 · 직접 전략": 10
+  }
+ },
+ "ct-영어교육론-활동중심수업": {
+  "blanks": {
+   "(1) 노래·찬트와 게임 · 노래·찬트와 게임": {
+    "accuracy-focused games#1": 2,
+    "chant#1": 1,
+    "fluency-focused games#1": 3,
+    "unpredictability#1": 4
+   },
+   "(2) 이야기와 드라마 · 교실 드라마": {
+    "readers' theater#1": 3,
+    "repeated reading#1": 4,
+    "role-play#1": 1,
+    "turn-taking#1": 2
+   },
+   "(2) 이야기와 드라마 · 스토리텔링": {
+    "refrain#1": 2,
+    "rhyme#1": 3,
+    "storytelling#1": 1
+   }
+  },
+  "questions": {
+   "(1) 노래·찬트와 게임 · 노래·찬트와 게임": 1,
+   "(2) 이야기와 드라마 · 교실 드라마": 3,
+   "(2) 이야기와 드라마 · 스토리텔링": 2
+  }
+ },
  "ct-음악": {
   "blanks": {
    "감상": {
