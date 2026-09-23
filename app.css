@@ -1066,3 +1066,9 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .pstyle button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .pstyle-in { margin: 2px 0 8px; }
 .pstyle-in button { font-size: 11.5px; padding: 2px 8px; }
+
+/* 시험지 글꼴 (세트 font: "exam") — 영어교육론 원문 빈칸.
+   KICE 시험지는 본문 '신명-중명조', 영문 '한양신명조'(2025 PDF 계측). 웹에서 가장 가까운 것:
+   영어 지문 = Source Serif 4, 한국어 발문 = 나눔명조 */
+.q-body.f-exam { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 1.06em; line-height: 1.72; }
+.sub-prompt.f-exam { font-family: "Nanum Myeongjo", "Noto Serif KR", "Batang", serif; font-size: 1.03em; }

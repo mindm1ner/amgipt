@@ -897,6 +897,9 @@ function buildStamp() {
    문제·정답은 같고 조건(앞글자·단어 수)만 바뀐다. 설정은 하나라 퀴즈 화면·오늘의 복습이 같이 따른다 */
 const PROMPT_STYLES = [["orig", "제작본"], ["y12", "2012~14 조건 없음"], ["y15", "2015~17 앞글자"],
   ["y18", "2018~23 앞글자+단어 수"], ["y24", "2024~26 단어 수만"]];
+/* 세트가 font 를 들고 오면 지문·발문에 그 글꼴을 입힌다. "exam" = 시험지처럼
+   (영어 지문 Source Serif 4, 한국어 발문 나눔명조 — KICE 시험지의 신명조에 가장 가까운 무료 글꼴) */
+function fontCls(quiz) { return quiz && quiz.font ? " f-" + quiz.font : ""; }
 function promptStyle() { return S.promptStyle || "orig"; }
 function subPrompt(sub) { return sub.prompts ? (sub.prompts[promptStyle()] || sub.prompt) : sub.prompt; }
 function pstyleRowHtml(cls) {
@@ -1585,7 +1588,7 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       : `<div class="sub-head"><span class="sno">${esc(sub.no)}</span>
         ${sub.points ? `<span class="spts">[${sub.points}점]</span>` : ""}${dotsHtml(id)}</div>`}
     ${sub.prompts && !/^#q\//.test(location.hash) ? pstyleRowHtml("pstyle-in") : ""}
-    ${subPrompt(sub) ? `<div class="sub-prompt md">${md(subPrompt(sub))}</div>` : ""}
+    ${subPrompt(sub) ? `<div class="sub-prompt md${fontCls(quiz)}">${md(subPrompt(sub))}</div>` : ""}
     ${focusHtml}
     ${relearnHtml}
     <div class="sub-input">${inputHtml}</div>
@@ -3249,7 +3252,7 @@ function quizCardsHtml(quiz, weakOnly, pred) {
         ? q.no + "번 · " : String(q.title).startsWith(String(q.no)) ? "" : esc(String(q.no)) + " · "}${esc(q.title)}</span>
         ${q.points ? `<span class="qpts">[${q.points}점]</span>` : ""}</div>
       <div class="q-frame">${esc(q.frame)}</div>
-      ${q.body ? `<div class="q-body md">${md(q.body)}</div>` : ""}
+      ${q.body ? `<div class="q-body md${fontCls(quiz)}">${md(q.body)}</div>` : ""}
       ${subsHtml}
     </section>`;
   }).join("");
@@ -3644,7 +3647,7 @@ function renderSession() {
       </div>
       <div class="q-head"><span class="qno">${esc(q.title)}</span>
         ${sub.hideHead ? "" : `<span class="qpts">${esc(String(sub.no))}</span>`}</div>
-      ${q.body ? `<details class="ctx" open><summary>지문·자료</summary><div class="q-body md">${md(q.body)}</div></details>` : ""}
+      ${q.body ? `<details class="ctx" open><summary>지문·자료</summary><div class="q-body md${fontCls(quiz)}">${md(q.body)}</div></details>` : ""}
       ${subBlockHtml(quiz, q, sub, qi, si)}
     </section>`;
   window.scrollTo(0, 0);
