@@ -1027,7 +1027,6 @@ function openRangeSheet(name, subject) {
                   <button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">처음부터</button>`
                : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>`}
              ${s.weak ? `<button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="weak">틀린 것만 ${s.weak}</button>` : ""}
-             <a class="btn ghost" href="#q/${quiz.id}">한 페이지로</a>
              <a class="btn ghost" href="#q/${encodeURIComponent(quiz.id)}/heat">형광펜 보기</a>`}
       </div>
     </div>`;
