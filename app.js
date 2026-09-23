@@ -119,6 +119,14 @@ function mergeRemote(remote) {
     const i = L.findIndex(x => x.id === id);
     if (i >= 0 && (L[i].ts || 0) < t) L.splice(i, 1);
   }
+  /* 세트 "풀기" 진행 위치도 나중에 푼 쪽이 이긴다(끝 표시 done 포함) */
+  if (remote.sess && typeof remote.sess === "object") {
+    const M = loadSessMap();
+    for (const [id, v] of Object.entries(remote.sess)) {
+      if (!v || typeof v !== "object") continue;
+      if (!M[id] || (v.t || 0) > (M[id].t || 0)) M[id] = v;
+    }
+  }
   /* 숨김은 늦게 누른 쪽이 이긴다 */
   if (remote.hidden && typeof remote.hidden === "object") {
     const H = hiddenMap();
@@ -999,6 +1007,8 @@ function openRangeSheet(name, subject) {
       exam: ["doc", "기출 모드", "기출 프레임 문서형 풀이"]
     };
     const [icon, name, desc] = META[kind] || META.exam;
+    /* 세트 "풀기"를 하다 나갔으면 그 자리부터 (saveSess) */
+    const rs = sessResumeInfo(quiz.id);
     const label = dup.has(kind) ? `${name} · ${quiz.subject}` : name;
     return `
     <div class="mode-row">
@@ -1012,7 +1022,10 @@ function openRangeSheet(name, subject) {
           ? `<a class="btn primary" href="#q/${quiz.id}">원문 열기</a>`
           : quiz.kind === "ct"
           ? `<a class="btn primary" href="#q/${quiz.id}">표 풀기</a>`
-          : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>
+          : `${rs
+               ? `<button class="btn primary" data-act="sess-resume" data-quiz="${esc(quiz.id)}">이어서 ${rs.pass > 1 ? rs.pass + "바퀴 · " : ""}${rs.at}/${rs.total}</button>
+                  <button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">처음부터</button>`
+               : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>`}
              ${s.weak ? `<button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="weak">틀린 것만 ${s.weak}</button>` : ""}
              <a class="btn ghost" href="#q/${quiz.id}">한 페이지로</a>
              <a class="btn ghost" href="#q/${encodeURIComponent(quiz.id)}/heat">형광펜 보기</a>`}
@@ -3503,6 +3516,7 @@ function nextRound() {
     ...newSession(queue, SESSION.mode, SESSION.scope),
     pass: SESSION.pass + 1, miss: SESSION.miss, last: SESSION.last, name: SESSION.name,
   };
+  saveSess();
   return true;
 }
 
@@ -3510,8 +3524,62 @@ function startSession(mode, scope) {
   const queue = buildQueue(mode, scope);
   if (!queue.length) return false;
   SESSION = newSession(queue, mode, scope);
+  saveSess();
   if (location.hash === "#today") renderSession();
   else location.hash = "#today";
+  return true;
+}
+
+/* ---------- 세트 "풀기" 이어 하기 ----------
+   세트 한 벌을 통째로 도는 "풀기"(mode all · 범위 qz:)는 수십 장이라 한 번에 못 끝낸다.
+   SESSION 은 메모리에만 있어서 나갔다 오면 새로 섞여 1번부터였다. 그래서 세트마다
+   어디까지 했는지를 떠 둔다(S.sess).
+   카드는 id 로만 적는다. 되살릴 때 allSubs() 에서 다시 찾으니 자료가 바뀌어도 안 깨진다.
+   ⭐ 기록 저장소 S 안에 두어 계정 동기화에 같이 실린다. 노트북에서 하다 폰으로 옮겨도 이어진다.
+      기기끼리는 나중에 푼 쪽(t)이 이긴다(mergeRemote). 한 바퀴를 끝내면 지우지 않고 끝났다는
+      표시(done)를 시각과 함께 남긴다. 지워 버리면 다른 기기가 들고 있던 옛 자리가 다음
+      동기화에 되살아난다(내 세트 무덤 setsDel 과 같은 이유) */
+function loadSessMap() { return (S.sess = (S.sess && typeof S.sess === "object") ? S.sess : {}); }
+function sessQuizId(ss) {
+  return ss && ss.mode === "all" && ss.scope && ss.scope.startsWith("qz:") ? ss.scope.slice(3) : null;
+}
+function saveSess() {
+  const qid = sessQuizId(SESSION);
+  if (!qid) return;
+  const m = loadSessMap();
+  /* 한 바퀴를 다 돌았으면 끝 표시만 남긴다. 끝 화면에서 "한 바퀴 더"를 고르면 그때 다시 적힌다.
+     카드 이름(name)은 안 싣는다. 동기화 몸집만 커지고, 되살릴 때 카드에서 다시 만들 수 있다 */
+  if (SESSION.idx >= SESSION.queue.length) m[qid] = { done: true, t: Date.now() };
+  else m[qid] = {
+    ids: SESSION.queue.map(x => x.id), idx: SESSION.idx, pass: SESSION.pass,
+    results: SESSION.results, wrong: [...SESSION.wrong],
+    miss: SESSION.miss, last: SESSION.last, t: Date.now()
+  };
+  persist();
+}
+function sessName(x) { return `${x.q.title}${x.sub && x.sub.sn ? " · " + x.sub.sn : ""}`; }
+/* 이어 할 자리가 있으면 { at, total } */
+function sessResumeInfo(qid) {
+  const v = loadSessMap()[qid];
+  return v && !v.done && Array.isArray(v.ids) && v.idx < v.ids.length ? { at: v.idx + 1, total: v.ids.length, pass: v.pass || 1 } : null;
+}
+function resumeSess(qid) {
+  const v = loadSessMap()[qid];
+  if (!v || v.done || !Array.isArray(v.ids)) return false;
+  const byId = new Map(allSubs().map(x => [x.id, x]));
+  /* 그 사이 자료에서 빠진 카드는 건너뛴다. 이미 푼 자리(idx 앞)에서 빠진 만큼 idx 도 당긴다 */
+  const done = v.ids.slice(0, v.idx).filter(id => byId.has(id)).length;
+  const queue = v.ids.filter(id => byId.has(id)).map(id => ({ ...byId.get(id), st: subState(id) }));
+  if (done >= queue.length) return false;
+  SESSION = {
+    ...newSession(queue, "all", "qz:" + qid),
+    idx: done, pass: v.pass || 1, roundSize: queue.length,
+    results: v.results || { O: 0, T: 0, X: 0 }, wrong: new Set(v.wrong || []),
+    miss: v.miss || {}, last: v.last || {},
+    /* 끝 화면의 "손이 오래 걸린 카드" 이름. 이미 만난 카드만 다시 붙인다 */
+    name: Object.fromEntries(queue.filter(x => v.last && v.last[x.id]).map(x => [x.id, sessName(x)])),
+  };
+  if (location.hash === "#today") renderSession(); else location.hash = "#today";
   return true;
 }
 
@@ -3854,6 +3922,10 @@ function onAppClick(e) {
     $(".sheeto")?.classList.remove("show");
     renderHome();
     pushNow();
+    return;
+  }
+  if (act === "sess-resume") {
+    if (!resumeSess(btn.dataset.quiz)) toast("이어서 풀 카드가 없어요");
     return;
   }
   if (act === "start-session" || act === "start-chronic" || act === "start-scope") {
@@ -4603,13 +4675,14 @@ function onAppClick(e) {
            그러면 한 바퀴가 끝나지 않아 "바퀴마다 줄어든다"가 무너진다.
            틀린 것은 바퀴 끝에 모아 다음 바퀴의 묶음이 된다 */
         const cur = SESSION.queue[SESSION.idx];
-        if (cur) SESSION.name[id] = `${cur.q.title}${cur.sub && cur.sub.sn ? " · " + cur.sub.sn : ""}`;
+        if (cur) SESSION.name[id] = sessName(cur);
         SESSION.last[id] = SESSION.pass;
         if (btn.dataset.v !== "O") {
           SESSION.wrong.add(id);
           SESSION.miss[id] = (SESSION.miss[id] || 0) + 1;
         } else SESSION.wrong.delete(id);
         SESSION.idx++;
+        saveSess();
         setTimeout(renderSession, 700);
       }
       return;
@@ -4871,8 +4944,16 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("change", e => { if (e.target.id === "importFile") onImportFile(e); });
 // 화면을 벗어날 때 밀린 백업을 바로 올린다
+/* 돌아오면 받아 온다. 폰에 열어 둔 탭은 다시 읽히지 않으니, 노트북에서 푼 것(진행 위치 포함)이
+   안 보인다. 세션을 푸는 중에는 건너뛴다(화면이 바뀌면 안 된다). 30초에 한 번까지만 */
+let lastPull = 0;
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden" && pushTimer) pushNow();
+  if (document.visibilityState === "visible" && Date.now() - lastPull > 30000
+      && location.hash !== "#today" && location.hash !== "#crush") {
+    lastPull = Date.now();
+    pullAndMerge();
+  }
 });
 (async () => {
   await handleAuthReturn(); // 매직링크로 돌아온 경우 계정 키로 교체
