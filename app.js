@@ -4906,20 +4906,28 @@ document.addEventListener("keydown", e => {
    마지막 칸에서 마우스로 단추를 찾아가는 게 번거로워 채점에 내줬다.
    한글을 치다 엔터를 누르면 그 엔터가 조합을 끝내는 데 쓰여 isComposing 으로 온다.
    그때 무시하면 엔터를 두 번 눌러야 하므로, 조합이 끝난 뒤(compositionend)에 넘긴다.
-   채점은 되돌리기 어려우니 조합 중인 Shift+엔터는 글자를 맺기만 하고 흘려보낸다(한 번 더 누르면 채점) */
+   채점은 되돌리기 어려우니 조합 중인 Shift+엔터는 글자를 맺기만 하고 흘려보낸다(한 번 더 누르면 채점)
+
+   ⭐ Shift+엔터 = 채점은 **카드형 답 칸 전부**에 건다(2026-09-23). 칸 하나짜리 용어 카드, 서술형 입력창,
+      집중 인출 재질문 칸, 오답 뽀개기 입력창(확인). 서술형 입력창은 엔터가 줄바꿈이라 그대로 둔다.
+      표 빈칸(.ctin)은 Shift+엔터가 '위 칸'이라 여기에 안 들어온다(answer 클래스가 아니다) */
 document.addEventListener("keydown", e => {
   const t = e.target;
-  if (!t.matches || !t.matches("input.answer[data-part]")) return;
+  if (!t.matches || !t.matches(".answer")) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
-  const subEl = t.closest(".sub");
-  if (!subEl) return;
   if (e.key === "Enter" && e.shiftKey) {
     if (e.isComposing || e.keyCode === 229) return;
+    const btn = t.id === "crushTa"
+      ? document.querySelector('.sub-actions [data-act="crush-check"]')
+      : t.closest(".sub")?.querySelector('.sub-actions [data-act="grade"]');
+    if (!btn) return;
     e.preventDefault();
-    const btn = subEl.querySelector('.sub-actions [data-act="grade"]');
-    if (btn) btn.click();
+    btn.click();
     return;
   }
+  if (!t.matches("input.answer[data-part]")) return;
+  const subEl = t.closest(".sub");
+  if (!subEl) return;
   let step = 0;
   if (e.key === "Enter" || e.key === "ArrowDown") step = 1;
   else if (e.key === "ArrowUp") step = -1;
