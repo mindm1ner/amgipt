@@ -574,11 +574,25 @@ function inScope(x, scope) {
   if (!scope) return true;
   if (scope.startsWith("sj:")) return x.quiz.subject === scope.slice(3);
   if (scope.startsWith("qz:")) return x.quiz.id === scope.slice(3);
+  /* "mx:묶음" = 여러 세트를 한 판으로 섞어 도는 묶음 (영어교육론 원문 빈칸 8개 장 → mixGroup) */
+  if (scope.startsWith("mx:")) return x.quiz.mixGroup === scope.slice(3);
   if (scope.startsWith("ar:")) {
     const i = scope.indexOf("|");
     return x.quiz.subject === scope.slice(3, i) && rangeOf(x.quiz) === scope.slice(i + 1);
   }
   return true;
+}
+/* 과목 화면의 섞어 풀기 단추. 세트가 mixGroup·mixName 을 들고 오면 묶음마다 하나.
+   중간에 나갔으면 '이어서', 틀린 게 있으면 '틀린 것만'도 붙인다 */
+function mixButtonsHtml(ranges) {
+  const groups = new Map();
+  for (const qs of ranges.values()) for (const q of qs) if (q.mixGroup && !groups.has(q.mixGroup)) groups.set(q.mixGroup, q.mixName || "섞어 풀기");
+  return [...groups.entries()].map(([g, name]) => {
+    const sc = "mx:" + g, c = queueCounts(sc), rs = sessResumeInfo(sc);
+    return (rs ? `<button class="btn primary" data-act="sess-resume" data-quiz="${esc(sc)}">${esc(name)} 이어서 ${rs.at}/${rs.total}</button>`
+               : `<button class="btn primary" data-act="start-scope" data-scope="${esc(sc)}" data-mode="all">${esc(name)} ${c.all}</button>`) +
+      (c.weak ? `<button class="btn" data-act="start-scope" data-scope="${esc(sc)}" data-mode="weak">틀린 것만 ${c.weak}</button>` : "");
+  }).join("");
 }
 function scopedSubs(scope) {
   return allSubs().filter(x => inScope(x, scope)).map(x => ({ ...x, st: subState(x.id) }));
@@ -1259,6 +1273,7 @@ function homeMainHtml() {
           : "영역 " + ranges.size + " · 카드 " + c.all + "장"}</p></div>
         <div class="mhead-btns">
           ${c.relearn + c.review ? `<button class="btn primary" data-act="start-scope" data-scope="${esc(sel)}">복습 ${c.relearn + c.review}장</button>` : ""}
+          ${mixButtonsHtml(ranges)}
           <button class="btn" data-act="set-new" data-subject="${esc(s)}" title="이 과목에 내 세트 만들기">${ico("plus")} 내 세트</button>
         </div></div>
       ${[...ranges.entries()].map(([name, quizzes]) => {
@@ -3559,7 +3574,10 @@ function startSession(mode, scope) {
       동기화에 되살아난다(내 세트 무덤 setsDel 과 같은 이유) */
 function loadSessMap() { return (S.sess = (S.sess && typeof S.sess === "object") ? S.sess : {}); }
 function sessQuizId(ss) {
-  return ss && ss.mode === "all" && ss.scope && ss.scope.startsWith("qz:") ? ss.scope.slice(3) : null;
+  if (!ss || ss.mode !== "all" || !ss.scope) return null;
+  if (ss.scope.startsWith("qz:")) return ss.scope.slice(3);
+  if (ss.scope.startsWith("mx:")) return ss.scope;      // 섞기 묶음도 이어 한다. 열쇠에 mx: 를 남겨 세트 id 와 안 겹치게
+  return null;
 }
 function saveSess() {
   const qid = sessQuizId(SESSION);
@@ -3590,7 +3608,7 @@ function resumeSess(qid) {
   const queue = v.ids.filter(id => byId.has(id)).map(id => ({ ...byId.get(id), st: subState(id) }));
   if (done >= queue.length) return false;
   SESSION = {
-    ...newSession(queue, "all", "qz:" + qid),
+    ...newSession(queue, "all", qid.startsWith("mx:") ? qid : "qz:" + qid),
     idx: done, pass: v.pass || 1, roundSize: queue.length,
     results: v.results || { O: 0, T: 0, X: 0 }, wrong: new Set(v.wrong || []),
     miss: v.miss || {}, last: v.last || {},
