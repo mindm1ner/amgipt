@@ -998,15 +998,16 @@ function openRangeSheet(name, subject) {
   const rows = quizzes.map(quiz => {
     const s = quizStats(quiz);
     const kind = quiz.kind || (quiz.mode === "review" ? "review" : "exam");
+    /* 모드 이름만 둔다. 설명 한 줄·소문항/풀어봄 수는 뺐다(설명체 금지) */
     const META = {
-      ct: ["grid", "표 빈칸형", "표의 내용 요소를 전부 비우고 채운다"],
-      won: ["doc", "원문 모드", "원문을 띄워 두고 외울 자리를 직접 뚫는다"],
-      ctx: ["recall", "맥락형", "수업 장면을 보고 그 칸의 내용 요소를 쓴다"],
-      sgi: ["recall", "성취기준형", "성취기준의 빈칸 용어를 써서 그 자리의 내용 요소를 쓴다"],
-      review: ["recall", "복습 모드", "단권화 키워드 인출·설명"],
-      exam: ["doc", "기출 모드", "기출 프레임 문서형 풀이"]
+      ct: ["grid", "표 빈칸형"],
+      won: ["doc", "원문 모드"],
+      ctx: ["recall", "맥락형"],
+      sgi: ["recall", "성취기준형"],
+      review: ["recall", "복습 모드"],
+      exam: ["doc", "기출 모드"]
     };
-    const [icon, name, desc] = META[kind] || META.exam;
+    const [icon, name] = META[kind] || META.exam;
     /* 세트 "풀기"를 하다 나갔으면 그 자리부터 (saveSess) */
     const rs = sessResumeInfo(quiz.id);
     const label = dup.has(kind) ? `${name} · ${quiz.subject}` : name;
@@ -1015,7 +1016,6 @@ function openRangeSheet(name, subject) {
       <div class="m-icon">${ico(icon)}</div>
       <div class="m-main">
         <div class="m-name">${esc(label)}</div>
-        <div class="m-desc">${desc} · 소문항 ${s.total} · 풀어봄 ${s.tried}</div>
       </div>
       <div class="m-acts">
         ${quiz.kind === "won"
@@ -1023,7 +1023,7 @@ function openRangeSheet(name, subject) {
           : quiz.kind === "ct"
           ? `<a class="btn primary" href="#q/${quiz.id}">표 풀기</a>`
           : `${rs
-               ? `<button class="btn primary" data-act="sess-resume" data-quiz="${esc(quiz.id)}">이어서 ${rs.pass > 1 ? rs.pass + "바퀴 · " : ""}${rs.at}/${rs.total}</button>
+               ? `<button class="btn primary" data-act="sess-resume" data-quiz="${esc(quiz.id)}">이어서</button>
                   <button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">처음부터</button>`
                : `<button class="btn primary" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="all">풀기</button>`}
              ${s.weak ? `<button class="btn" data-act="start-scope" data-scope="qz:${esc(quiz.id)}" data-mode="weak">틀린 것만 ${s.weak}</button>` : ""}
@@ -1035,7 +1035,7 @@ function openRangeSheet(name, subject) {
   const o = $(".sheeto");
   o.querySelector(".sheet").innerHTML =
     `<div class="grab"></div>
-     <h3>${esc(name)}<small>모드를 골라 시작하세요</small></h3>` + rows;
+     <h3>${esc(name)}</h3>` + rows;
   o.classList.add("show");
 }
 
