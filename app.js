@@ -323,10 +323,26 @@ for (const set of (window.DAJIGI_SGI || [])) {
         prompt: s.ask,
         answer: s.a,
         parts: [{ label: "내용 요소", accept: [s.a] }],
-        ct: { cat: s.cat, gr: q.gr, area: q.area }
+        ct: { cat: s.cat, gr: q.gr, area: q.area },
+        /* 빈칸을 채운 성취기준. 답을 공개할 때 같이 보인다 */
+        sgiFull: s.full ? { code: q.no, ...s.full } : null
       }))
     }))
   });
+}
+
+/* 성취기준형 답 공개: 빈칸 자리를 채운 성취기준 전문. 채운 말은 ㉠㉡ 표시와 함께 칠한다 */
+function sgiFullHtml(f) {
+  if (!f || !f.t) return "";
+  const MK = "㉠㉡㉢㉣㉤㉥㉦㉧";
+  let out = "", at = 0;
+  f.f.forEach(([s, n], k) => {
+    out += esc(f.t.slice(at, s)) +
+      `<b class="sgf-fill"><span class="sgf-mk">${MK[k] || ""}</span>${esc(f.t.slice(s, s + n))}</b>`;
+    at = s + n;
+  });
+  out += esc(f.t.slice(at));
+  return `<div class="sgf"><span class="lbl">완성된 성취기준</span><div>[${esc(f.code)}] ${out}</div></div>`;
 }
 
 /* ---------- 자료 파일에서 온 세트 원본 (숨기기·되살리기용) ----------
@@ -3926,6 +3942,7 @@ function showReveal(subEl, graded) {
     ${mlHtml}
     <div class="model"><span class="lbl">모범답안</span><div class="md">${md(sub.answer)}</div></div>
     ${sub.note ? `<div class="note">${esc(sub.note)}</div>` : ""}
+    ${sgiFullHtml(sub.sgiFull)}
     <div class="verdict-row">
       <span class="vlbl">내 판정${suggest ? ` (제안: ${vName(suggest)})` : ""}</span>
       <div class="vbtns">

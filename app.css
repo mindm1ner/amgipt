@@ -504,6 +504,13 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .model .lbl { font-size: .76rem; font-weight: 700; color: var(--accent); display: block; margin-bottom: 3px; }
 .note { font-size: .84rem; color: var(--sub); background: var(--bg); border-radius: 10px; padding: 9px 13px; margin-bottom: 10px; }
 .note::before { content: "※ "; }
+/* 성취기준형 답 공개 때 같이 뜨는 완성된 성취기준 */
+.sgf { font-size: .88rem; line-height: 1.75; color: var(--ink); background: var(--bg);
+  border-radius: 10px; padding: 9px 13px; margin-bottom: 10px;
+  word-break: keep-all; text-wrap: pretty; }
+.sgf .lbl { font-size: .76rem; font-weight: 700; color: var(--accent); display: block; margin-bottom: 3px; }
+.sgf-fill { font-weight: 700; background: #ffe9a8; color: var(--ink); border-radius: 4px; padding: 0 3px; }
+.sgf-mk { font-size: .7em; font-weight: 600; color: var(--sub); margin-right: 2px; }
 .ai-status { font-size: .82rem; color: var(--sub); margin-bottom: 10px; }
 .ai-diag {
   background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
