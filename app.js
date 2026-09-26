@@ -758,12 +758,16 @@ function dayLogHtml(day) {
     const bad = list.filter(x => x.r.r !== "O");
     const ok = list.filter(x => x.r.r === "O");
     /* 내체표 묶음이면 그 과목 표로 건너뛴다. 이 날 틀린 자리가 표 어디였는지는 표에서만 보인다 */
+    /* 맥락형·성취기준형도 같은 내용 요소를 묻는 것이라 이어진 표로 건너뛴다 */
     const ct = list.find(x => x.card && x.card.quiz.kind === "ct");
+    const ctId = ct ? ct.card.quiz.id
+      : list.map(x => x.card && (x.card.quiz.kind === "ctx" || x.card.quiz.kind === "sgi")
+          ? ctTableOf(x.id) : null).find(Boolean) || null;
     return `
     <div class="dgrp"><div class="dgrp-h">${esc(key)}<span>${
       bad.length ? `틀림 ${bad.length} · ` : ""}맞음 ${ok.length}${
-      ct ? ` <button class="dgrp-map" data-act="home-go"
-        data-sel="ctmap:${esc(ct.card.quiz.id)}">표로 보기</button>` : ""}</span></div>
+      ctId ? ` <button class="dgrp-map" data-act="home-go"
+        data-sel="ctmap:${esc(ctId)}">표로 보기</button>` : ""}</span></div>
     ${rowsOf(bad)}
     ${ok.length ? `<details class="dok"><summary>맞힌 것 ${ok.length}장</summary>
       ${rowsOf(ok)}</details>` : ""}</div>`;
@@ -1815,8 +1819,63 @@ function ctTableHtml(quiz, q, qi) {
    전에는 "지금도 약점인가"(isWeak)로 한 번 거르고 색을 칠했다. 그래서 세 번 틀린 칸도
    마지막에 맞히면 색이 빠지고 왼쪽 자국만 남아, 표를 훑을 때 **많이 틀린 자리가 안 보였다.**
    여러 번 틀렸다는 사실은 최근에 한 번 맞혔다고 없어지지 않는다. 그대로 진하게 둔다 */
+/* ⭐ 맥락형·성취기준형에서 틀린 것도 그 칸의 오답이다 (2026-09-27).
+   셋 다 같은 내용 요소를 묻는데 기록은 카드마다 따로 쌓여서, 수업 장면에서 틀린 칸이
+   표에서는 깨끗하게 보였다. 그래서 표 칸마다 "같은 내용 요소를 묻는 카드"를 이어 두고
+   형광펜을 셀 때 그 기록까지 합친다. 기록을 옮겨 적지는 않는다 — 간격 엔진은 카드마다
+   따로 돌아야 하고, 합치는 것은 보는 자리(표로 보기)의 일이다.
+   잇는 열쇠: 범주 + 내용 요소 글자. 과목·영역·학년군이 맞을수록 앞세우고, 가장 잘 맞는
+   칸들에 잇는다(통합교과는 바른·슬기·즐거운 세 표가 같은 표라 셋에 다 잇는다).
+   통합교과 성취기준형 답은 "학습 습관 · 생활 습관"처럼 두 칸을 한 번에 묻는다 → 칸마다 잇는다 */
+let CT_LINKS = null, CT_LINKS_N = -1;
+function ctLinks() {
+  if (CT_LINKS && CT_LINKS_N === DATA.length) return CT_LINKS;
+  const cells = new Map();    // 범주|글자 → [{ id, range, area, gr }]
+  for (const quiz of DATA) {
+    if (quiz.kind !== "ct" || quiz.subject !== "내체표") continue;
+    for (const q of quiz.questions) for (const s of q.subs) {
+      if (!s.ct) continue;
+      const k = norm(s.ct.cat) + "|" + norm(s.answer);
+      (cells.get(k) || cells.set(k, []).get(k)).push(
+        { id: subId(quiz, q, s), range: quiz.range, area: q.title, gr: s.ct.gr });
+    }
+  }
+  const links = new Map();    // 표 칸 id → [{ id: 카드 id, kind }]
+  for (const quiz of DATA) {
+    if (quiz.kind !== "ctx" && quiz.kind !== "sgi") continue;
+    for (const q of quiz.questions) for (const s of q.subs) {
+      if (!s.ct) continue;
+      const grAlt = String(q.title || "").split(" · ").pop();   // 통합교과: 표의 학년군 칸 = 교과 이름
+      for (const part of String(s.answer).split(" · ")) {
+        const hits = cells.get(norm(s.ct.cat) + "|" + norm(part)) || [];
+        if (!hits.length) continue;
+        const score = c => (c.range === quiz.range ? 4 : 0) + (c.area === s.ct.area ? 2 : 0)
+          + (c.gr === s.ct.gr || c.gr === grAlt ? 1 : 0);
+        const top = Math.max(...hits.map(score));
+        for (const c of hits) if (score(c) === top)
+          (links.get(c.id) || links.set(c.id, []).get(c.id)).push({ id: subId(quiz, q, s), kind: quiz.kind });
+      }
+    }
+  }
+  CT_LINKS = links; CT_LINKS_N = DATA.length;
+  return links;
+}
+/* 표 칸의 기록 + 이어진 카드의 기록, 시간순. 이어진 줄에는 어디서 풀었는지(src)를 붙인다 */
+function ctHist(id) {
+  const ln = ctLinks().get(id);
+  if (!ln) return history(id);
+  const all = history(id).slice();
+  for (const l of ln) for (const r of history(l.id)) all.push({ ...r, src: l.kind });
+  return all.sort((a, b) => (a.t || 0) - (b.t || 0));
+}
+/* 이어진 맥락형·성취기준형 카드 중 하나로 이 표를 찾는다 (기록의 '표로 보기' 단추) */
+function ctTableOf(cardId) {
+  for (const [cid, ln] of ctLinks()) if (ln.some(l => l.id === cardId)) return cid.split("|")[0];
+  return null;
+}
+
 function ctHeat(id) {
-  const h = history(id);
+  const h = ctHist(id);
   const w = h.filter(r => r.r !== "O").length;
   return { w, tried: h.length > 0, lv: Math.min(w, 3) };
 }
@@ -1885,7 +1944,7 @@ function ctHeatHtml(quiz) {
 function ctHeatDetailHtml(quiz, q, sub, id) {
   const area = ctAreaMap(q);
   const byNo = new Map(q.subs.map(s => [s.no, s]));
-  const h = history(id);
+  const h = ctHist(id);
   const head = `<div class="hd-head">
       <div><b class="hd-ans">${esc(sub.answer)}</b>
         <span class="hd-where">${esc(ctWhere(sub, area))}</span></div>
@@ -1894,11 +1953,13 @@ function ctHeatDetailHtml(quiz, q, sub, id) {
   const rows = h.slice().reverse().map(r => {
     const [, mo, dy] = String(r.d || "").split("-");
     const mine = r.v || (r.x && r.x.w) || "";
-    const ref = r.x && r.x.r ? byNo.get(ctNo(r.x.r)) : null;
+    /* 맥락형·성취기준형 줄의 x.r 은 그쪽 번호(표 밖에서 새로 매긴 것)라 이 표 칸 번호로 읽으면 엉뚱한 칸을 짚는다 */
+    const ref = !r.src && r.x && r.x.r ? byNo.get(ctNo(r.x.r)) : null;
     return `<li>
       <span class="hd-d">${mo ? `${+mo}/${+dy}` : ""}</span>
       <div>
-        <div class="hd-r">${vTag(r.r)}${mine
+        <div class="hd-r">${vTag(r.r)}${r.src
+          ? `<span class="hd-src">${r.src === "ctx" ? "맥락형" : "성취기준형"}</span>` : ""}${mine
           ? `<span class="hd-mine">${esc(mine)}</span>`
           : `<span class="hd-mine none">안 씀</span>`}</div>
         ${r.x && r.x.t ? `<div class="hd-x"><span class="cttag t-${esc(r.x.t)}"
