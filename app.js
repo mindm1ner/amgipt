@@ -3474,8 +3474,73 @@ function renderQuiz(quizId, weakOnly, heat) {
       <ul>${quiz.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ul>
     </details>` : ""}
     ${qCards || '<div class="empty">다시 볼 소문항이 없어요. 전부 O!</div>'}`;
+  if (quiz.kind === "won") wonNavMount();
   window.scrollTo(0, 0);
 }
+
+/* ---------- 원문 영역 목차 ----------
+   성취기준 원문은 영역 카드가 스무 장 넘게 이어져서 원하는 영역까지 한참 내려야 했다.
+   그려진 카드 제목("3~4학년 · 운동")으로 목차를 만든다. 첫 마디가 묶음(학년군), 나머지가 영역.
+   넓은 화면은 본문 왼쪽 레일, 좁은 화면은 상단 바 밑에 붙는 가로 칩 줄 (CSS가 가른다).
+   DOM에서 읽으므로 풀기·형광펜 보기·틀린 것만 어디서든 보이는 카드만 목차에 오른다. */
+const WON_NAV_MIN = 3;
+function wonNavMount() {
+  const app = $("#app");
+  const cards = [...app.querySelectorAll(".won-card")];
+  if (cards.length < WON_NAV_MIN) return;
+  let last = null, items = "";
+  cards.forEach((c, k) => {
+    c.id = "wsec-" + k;
+    const t = (c.querySelector(".qno") || {}).textContent || "";
+    const parts = t.split(" · ");
+    const grp = parts.length > 1 ? parts[0] : "";
+    const name = parts.length > 1 ? parts.slice(1).join(" · ") : t;
+    if (grp && grp !== last) items += `<span class="wn-grp">${esc(grp)}</span>`;
+    last = grp;
+    items += `<a class="wn-it" href="#wsec-${k}" data-k="${k}" title="${esc(t)}">${esc(name)}</a>`;
+  });
+  const nav = document.createElement("nav");
+  nav.className = "won-nav";
+  nav.setAttribute("aria-label", "영역 목차");
+  nav.innerHTML = `<span class="wn-ttl">영역</span>${items}`;
+  app.insertBefore(nav, cards[0].closest("#app > *") || cards[0]);
+  const bar = app.querySelector(".topbar");
+  nav.style.setProperty("--wn-top", (bar ? bar.offsetHeight : 0) + "px");
+  nav.addEventListener("click", e => {
+    const a = e.target.closest(".wn-it");
+    if (!a) return;
+    e.preventDefault();   // 해시를 바꾸면 라우터가 화면을 다시 그린다
+    const card = document.getElementById("wsec-" + a.dataset.k);
+    if (card) window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - wonNavOffset() + 1 });   // smooth 는 레일이 같이 굴러가며 도중에 끊긴다
+    wonNavSpy();
+  });
+  wonNavSpy();
+}
+/* 카드 머리가 가려지지 않을 만큼: 상단 바 + (좁은 화면이면) 칩 줄 */
+function wonNavOffset() {
+  const bar = document.querySelector("#app > .topbar");
+  const nav = document.querySelector(".won-nav");
+  const inline = nav && getComputedStyle(nav).position === "sticky";
+  return (bar ? bar.offsetHeight : 0) + (inline ? nav.offsetHeight : 0) + 12;
+}
+/* 지금 읽는 카드를 목차에 표시한다. 좁은 칩 줄은 그 칩이 보이게 가로로만 민다 */
+function wonNavSpy() {
+  const nav = document.querySelector(".won-nav");
+  if (!nav) return;
+  const cards = document.querySelectorAll("#app .won-card[id^='wsec-']");
+  const y = wonNavOffset() + 4;
+  let cur = 0;
+  cards.forEach((c, k) => { if (c.getBoundingClientRect().top <= y) cur = k; });
+  const on = nav.querySelector(".wn-it.on");
+  if (on && on.dataset.k === String(cur)) return;
+  if (on) on.classList.remove("on");
+  const a = nav.querySelector(`.wn-it[data-k="${cur}"]`);
+  if (!a) return;
+  a.classList.add("on");
+  if (nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: a.offsetLeft - nav.clientWidth / 3 });
+  else if (nav.scrollHeight > nav.clientHeight) nav.scrollTo({ top: a.offsetTop - nav.clientHeight / 3 });
+}
+window.addEventListener("scroll", () => requestAnimationFrame(wonNavSpy), { passive: true });
 
 /* ---------- 오답 모아보기 ---------- */
 let WRONG_FILTER = "all"; // all | 1 | 2 | 3(=3번 이상), 질문 단위 틀린 횟수 기준

@@ -1112,3 +1112,60 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
    영어 지문 = Source Serif 4, 한국어 발문 = 나눔명조 */
 .q-body.f-exam { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-size: 1.06em; line-height: 1.72; }
 .sub-prompt.f-exam { font-family: "Nanum Myeongjo", "Noto Serif KR", "Batang", serif; font-size: 1.03em; }
+
+/* ---------- 원문 영역 목차 ----------
+   좁은 화면: 상단 바 밑에 붙는 가로 칩 줄. 넓은 화면(1200px~): 본문 왼쪽 고정 레일.
+   --wn-top = 상단 바 높이 (JS가 넣는다) */
+.won-nav {
+  position: sticky; top: var(--wn-top, 0px); z-index: 4;
+  display: flex; align-items: center; gap: 6px;
+  overflow-x: auto; scrollbar-width: none;
+  margin: -8px 0 16px; padding: 8px 0 10px;
+  background: var(--bar-bg); backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+}
+.won-nav::-webkit-scrollbar { display: none; }
+.won-nav .wn-ttl { display: none; }
+.won-nav .wn-grp {
+  flex-shrink: 0; white-space: nowrap;
+  font-size: .72rem; font-weight: 700; color: var(--faint);
+  padding-left: 8px;
+}
+.won-nav .wn-ttl + .wn-grp { padding-left: 0; }
+.won-nav .wn-it {
+  flex-shrink: 0; white-space: nowrap; text-decoration: none;
+  font-size: .8rem; font-weight: 600; color: var(--sub);
+  padding: 4px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.won-nav .wn-it:hover { border-color: var(--sub); color: var(--ink); }
+.won-nav .wn-it.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+@media (min-width: 1200px) {
+  .won-nav {
+    position: fixed; top: calc(var(--wn-top, 0px) + 32px);
+    left: calc(50% - 360px - 212px); width: 184px;
+    max-height: calc(100vh - var(--wn-top, 0px) - 56px);
+    flex-direction: column; align-items: stretch; gap: 1px;
+    overflow-x: hidden; overflow-y: auto;
+    margin: 0; padding: 0 0 8px;
+    background: none; backdrop-filter: none; border: 0;
+  }
+  .won-nav .wn-ttl {
+    display: block; font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+    color: var(--faint); padding: 0 12px 6px;
+  }
+  .won-nav .wn-grp { padding: 12px 12px 3px; }
+  .won-nav .wn-ttl + .wn-grp { padding-top: 2px; padding-left: 12px; }
+  .won-nav .wn-it {
+    white-space: normal; text-wrap: pretty; line-height: 1.4;
+    padding: 5px 12px; border: 0; border-left: 2px solid var(--line);
+    border-radius: 0; background: none; font-size: .82rem; font-weight: 500;
+  }
+  .won-nav .wn-it:hover { background: var(--hover); color: var(--ink); }
+  .won-nav .wn-it.on {
+    background: none; color: var(--ink); font-weight: 700;
+    border-left-color: var(--accent);
+  }
+}
