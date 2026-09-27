@@ -2190,7 +2190,9 @@ function wonReanchor() {
   let moved = 0, lost = 0;
   for (const b of wonList()) {
     const set = WON.find(x => x.id === b.q);
+    /* was = 문서를 다시 묶기 전의 열쇠들 (수학 성취기준: 학년군별 → 영역별) */
     const doc = set && (set.docs.find(d => wonDocKey(d) === b.dk)
+      || set.docs.find(d => (d.was || []).includes(b.dk))
       || set.docs.find(d => wonNorm(d.title) === wonNorm(b.dt || "\u0000")));
     if (!doc) {
       if (!b.o) { b.o = 1; changed = true; }
@@ -2198,7 +2200,7 @@ function wonReanchor() {
       continue;
     }
     const dk = wonDocKey(doc);
-    if (dk !== b.dk) {           // 문서 제목으로 다시 찾은 경우
+    if (dk !== b.dk) {           // 옛 열쇠나 문서 제목으로 다시 찾은 경우
       wonMoveRecords(wonSid(b.q, b), b.q + "|" + dk + "|" + b.k);
       b.dk = dk;
       changed = true;
@@ -2286,6 +2288,15 @@ function wonKeepPlace(card) {
 function wonList() { return (S.won = S.won || []); }
 function wonDoc(set, dk) { return set.docs.find(x => wonDocKey(x) === dk); }
 
+/* 한 장씩 볼 때 이 줄이 어디 딸렸는지. "원문 · 수와 연산 · 2수01-06 해설" */
+function wonLinePath(set, doc, i) {
+  const m = (doc.meta && doc.meta[i]) || null;
+  const base = set.subject + " 원문 · " + doc.title;
+  if (!m || !m.t) return base;
+  if (m.t === "sc") return base + " · " + m.l;
+  return base + " · " + (m.p ? m.p + " " : "") + m.l.replace(/ \d+$/, "");
+}
+
 /* 원문 묶음 → 복습 엔진이 아는 모양. 빈칸 하나가 카드 하나다 */
 function wonBuild() {
   wonReanchor();
@@ -2315,6 +2326,7 @@ function wonBuild() {
                    뚫은 자리만 밑줄로 남긴다. 앞뒤 문맥이 곧 단서다 */
                 prompt: line.slice(0, b.s) + "＿＿＿＿" + line.slice(b.e),
                 answer: ans, parts: [{ label: "원문", accept: [ans] }],
+                frame: wonLinePath(set, doc, b.i),
                 won: b
               };
             })
@@ -2518,14 +2530,26 @@ function wonDrop(card, i, s) {
   toast(n ? "빈칸을 뺐어요. 기록 " + n + "건은 남겨 둡니다" : "빈칸을 뺐어요");
 }
 
+/* 줄의 겉모양. 이름표(성취기준 코드·해설·고려)와 소제목.
+   ⚠️ 이름표는 CSS ::before 로 그린다 — 글자를 <span> 으로 넣으면 드래그 자리를 셀 때
+   그 글자까지 세어 빈칸이 밀린다.
+   meta.t 가 있으면(성취기준 원문) 이름표를 줄 앞 태그로 붙인다 — sc 성취기준 · ex 해설 · iq 탐구 · co 고려.
+   meta.w 는 그 고려 문단이 같이 걸치는 다른 성취기준이라 태그 안에 덧붙인다 */
+function wonLineAttr(doc, i) {
+  const m = (doc.meta && doc.meta[i]) || null;
+  const cls = "wl" + (m && m.h ? " wh" + (m.b ? " wband" : "") : "");
+  let lab = "";
+  if (m && m.l) {
+    const l = m.w && m.w.length ? m.l + " +" + m.w.join(" +") : m.l;
+    lab = ` data-lab="${esc(l)}"` + (m.t ? ` data-t="${esc(m.t)}"` : "");
+  }
+  return { cls, lab };
+}
+
 /* 줄 하나를 그린다. 빈칸은 정하기 모드면 표시, 풀기 모드면 입력칸 */
 function wonLineHtml(quiz, doc, i, blanks, pred) {
   const line = doc.lines[i] || "";
-  /* 이름표(성취기준 코드·해설·고려)와 소제목. ⚠️ 이름표는 CSS ::before 로 그린다 —
-     글자를 <span> 으로 넣으면 드래그 자리를 셀 때 그 글자까지 세어 빈칸이 밀린다 */
-  const m = (doc.meta && doc.meta[i]) || null;
-  const cls = "wl" + (m && m.h ? " wh" : "");
-  const lab = m && m.l ? ` data-lab="${esc(m.l)}"` : "";
+  const { cls, lab } = wonLineAttr(doc, i);
   const mine = blanks.filter(b => b.i === i).sort((a, b) => a.s - b.s);
   if (!mine.length) return `<p class="${cls}" data-i="${i}"${lab}>${esc(line)}</p>`;
 
@@ -2580,8 +2604,32 @@ function wgCells(r, ncol, lineHtml) {
   return out;
 }
 
+/* 성취기준 원문은 해설·고려 줄이 어느 성취기준에 딸렸는지(meta.p)를 안다.
+   성취기준 줄 밑에 딸린 줄을 들여 묶어 위계가 보이게 한다. 감싸기만 하므로 줄 글자와
+   빈칸 자리는 그대로다 (wonPara 는 closest(".wl") 로 줄을 찾는다) */
+function wonTreeHtml(doc, lineHtml) {
+  let out = "", open = null;
+  const close = () => { if (open != null) { out += `</div></div>`; open = null; } };
+  doc.lines.forEach((_, i) => {
+    const m = doc.meta[i] || {};
+    if (m.t === "sc") {
+      close();
+      out += `<div class="wsc">` + lineHtml(i) + `<div class="wkids">`;
+      open = m.l;
+      return;
+    }
+    if (open != null && m.p !== open) close();
+    out += lineHtml(i);
+  });
+  close();
+  return out.replace(/<div class="wkids"><\/div>/g, "");
+}
+
 function wonBodyHtml(doc, lineHtml) {
-  if (!doc.grid) return doc.lines.map((_, i) => lineHtml(i)).join("");
+  if (!doc.grid) {
+    if (doc.meta && doc.meta.some(m => m && m.t === "sc")) return wonTreeHtml(doc, lineHtml);
+    return doc.lines.map((_, i) => lineHtml(i)).join("");
+  }
   const ncol = doc.grid.cols.length;
   const head = `<div class="wg-h"></div>` + doc.grid.cols.map((c, ci) =>
     `<div class="wg-h wg-c${ci}">${esc(c)}</div>`).join("");
@@ -2740,9 +2788,7 @@ function wonHtml(quiz, weakOnly, pred) {
    진하기 = 틀린 횟수(ctHeat와 같은 3단계). 마지막에 한 번 맞혔다고 색이 빠지지 않는다. */
 function wonHeatLineHtml(quiz, doc, i, blanks) {
   const line = doc.lines[i] || "";
-  const m = (doc.meta && doc.meta[i]) || null;
-  const cls = "wl" + (m && m.h ? " wh" : "");
-  const lab = m && m.l ? ` data-lab="${esc(m.l)}"` : "";
+  const { cls, lab } = wonLineAttr(doc, i);
   const mine = blanks.filter(b => b.i === i).sort((a, b) => a.s - b.s);
   if (!mine.length) return `<p class="${cls}" data-i="${i}"${lab}>${esc(line)}</p>`;
   let out = "", at = 0;
@@ -3716,7 +3762,7 @@ function renderSession() {
     </div>
     <section class="q-card sess-card${lastR ? " last-" + lastR : ""}">
       <div class="sess-meta">
-        <span>${esc(quiz.subject)} · ${esc(q.frame)}</span>
+        <span>${esc(quiz.subject)} · ${esc(sub.frame || q.frame)}</span>
         ${st && st.chronic ? `<span class="chronic">${ico("bolt")} 고질 약점</span>` : ""}
         ${lastR
           ? `<span class="lastmark m-${lastR}">지난 판정 ${lastR === "T" ? "△" : lastR}</span>`
