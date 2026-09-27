@@ -80,6 +80,11 @@ function mergeRemote(remote) {
   /* 원문 모드에서 뚫어 둔 빈칸 병합: 좌표(세트·문서·줄·시작)가 같으면 같은 자리다.
      합집합으로 둔다 — 한쪽에서 지운 것을 여기서 알 길이 없어서, 지움을 따라가면
      다른 기기에서 어제 뚫은 것까지 같이 날아간다. 되살아나면 다시 지우는 쪽이 싸다 */
+  /* 원문 빈칸 무덤: 뺀 자리의 열쇠 → 뺀 시각. 합집합만으로는 한 기기에서 뺀 빈칸을
+     다른 기기가 도로 올려 보내 되살아난다(2026-09-27 수학 핵심 키워드에서 겪음).
+     빈칸의 t(뚫은 시각)보다 무덤이 나중이면 죽은 자리다. 같은 자리를 다시 뚫으면 t 가 새로 붙어 산다 */
+  const wdel = wonDelMap();
+  for (const [k, t] of Object.entries(remote.wonDel || {})) if ((wdel[k] || 0) < t) wdel[k] = t;
   if (Array.isArray(remote.won)) {
     const L = (S.won = S.won || []);
     /* 열쇠는 글자에서 나온다(dk·k). 옛 기기가 보내온 자리 열쇠도 받아 두면 wonMigrate 가 옮긴다 */
@@ -87,10 +92,12 @@ function mergeRemote(remote) {
     const have = new Set(L.map(key));
     for (const b of remote.won) {
       if (!b || typeof b.s !== "number" || have.has(key(b))) continue;
+      if (b.k && wonDead(b)) continue;
       have.add(key(b));
       L.push(b);
       added++;
     }
+    for (let j = L.length - 1; j >= 0; j--) if (L[j] && L[j].k && wonDead(L[j])) L.splice(j, 1);
     if (typeof wonBuild === "function") wonBuild();   // 새로 온 빈칸을 카드로 올린다
   }
   // 질문 단위 드릴 통계 병합: 틀린 횟수는 큰 쪽, 맞춘 시각은 최근 쪽
@@ -2291,6 +2298,9 @@ function wonKeepPlace(card) {
 }
 
 function wonList() { return (S.won = S.won || []); }
+function wonDelMap() { return (S.wonDel = (S.wonDel && typeof S.wonDel === "object") ? S.wonDel : {}); }
+function wonDelKey(b) { return b.q + "|" + b.dk + "|" + b.k; }
+function wonDead(b) { return (wonDelMap()[wonDelKey(b)] || 0) > (b.t || 0); }
 function wonDoc(set, dk) { return set.docs.find(x => wonDocKey(x) === dk); }
 
 /* 한 장씩 볼 때 이 줄이 어디 딸렸는지. "원문 · 수와 연산 · 2수01-06 해설" */
@@ -2383,7 +2393,7 @@ function wonAdd(p, a, b) {
 
   const nb = {
     q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
-    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
+    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b, t: Date.now()
   };
   /* 떼어 둔 같은 자리가 있으면 그것을 되살린다(기록이 이미 그 열쇠에 붙어 있다) */
   const L = wonList();
@@ -2527,6 +2537,7 @@ function wonDrop(card, i, s) {
      지우면 예전에 맞히고 틀린 내역이 그때그때 날아간다. 열쇠가 글자에서 나오므로
      같은 자리를 다시 뚫으면 그 기록이 그대로 이어진다 */
   const n = history(wonSid(quiz.id, L[k])).length;
+  if (L[k].k) wonDelMap()[wonDelKey(L[k])] = Date.now();   // 다른 기기가 도로 올려 보내도 되살아나지 않게
   L.splice(k, 1);
   persist();
   wonBuild();
@@ -2668,7 +2679,7 @@ function wonHintOne(quiz, doc, dk, h, L) {
   if (mine.some(x => a < x.e && x.s < b)) return 0;      // 이미 뚫어 둔 자리는 그대로 둔다
   const nb = {
     q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
-    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
+    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b, t: Date.now()
   };
   /* 떼어 둔 같은 자리가 있으면 되살린다 — 지난 기록이 그 열쇠에 붙어 있다 (wonAdd 와 같은 규칙) */
   const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
@@ -2704,8 +2715,9 @@ function wonHintPunch(card) {
    나중에 키워드를 더하면 더한 것만 새로 뚫린다. 이미 뚫린 자리와 겹치면 건너뛴다 */
 function wonHintAuto() {
   const done = (S.wonHintDone = (S.wonHintDone && typeof S.wonHintDone === "object") ? S.wonHintDone : {});
+  const del = wonDelMap();
   const L = wonList();
-  let n = 0;
+  let n = 0, fixed = 0;
   for (const set of WON) {
     if (isHidden(set.id)) continue;
     for (const doc of set.docs) {
@@ -2713,14 +2725,23 @@ function wonHintAuto() {
       const dk = wonDocKey(doc);
       for (const h of doc.hint) {
         const id = set.id + "|" + dk + "|" + wonKey(doc, h[0], h[1], h[2]);
-        if (done[id]) continue;
+        /* 추천 자리 그대로인 빈칸이 손으로 뚫은 다른 빈칸과 겹치면 = 채영님이 범위를 고친 것.
+           동기화 합집합으로 되살아난 추천 빈칸을 걷어 내고 무덤을 남긴다 */
+        const j = L.findIndex(x => x.q === set.id && x.dk === dk && !x.o && x.i === h[0] && x.s === h[1] && x.e === h[2]);
+        if (j >= 0 && L.some(x => x !== L[j] && x.q === set.id && x.dk === dk && !x.o && x.i === h[0]
+                                  && x.s < h[2] && h[1] < x.e)) {
+          del[id] = Math.max(del[id] || 0, (L[j].t || 0) + 1);
+          L.splice(j, 1);
+          fixed++;
+        }
+        if (done[id] || del[id]) { done[id] = done[id] || Date.now(); continue; }
         done[id] = Date.now();
         if (wonHintOne(set, doc, dk, h, L)) n++;
       }
     }
   }
   if (n) toast("핵심 키워드 " + n + "곳을 빈칸으로 뚫어 두었어요");
-  return n;
+  return n + fixed;
 }
 
 function wonCardHtml(quiz, doc, qi, pred) {
