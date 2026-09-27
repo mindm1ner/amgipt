@@ -72,6 +72,11 @@ function mergeRemote(remote) {
       for (const r of arr) if (r && r.q && !cur.some(c => c.q === r.q)) cur.push(r);
     }
   }
+  // 자동으로 뚫은 추천 자리 표시: 합집합 (한 기기에서 뚫고 뺀 자리를 다른 기기가 다시 뚫지 않게)
+  if (remote.wonHintDone && typeof remote.wonHintDone === "object") {
+    S.wonHintDone = S.wonHintDone || {};
+    for (const [k, t] of Object.entries(remote.wonHintDone)) if (!S.wonHintDone[k]) S.wonHintDone[k] = t;
+  }
   /* 원문 모드에서 뚫어 둔 빈칸 병합: 좌표(세트·문서·줄·시작)가 같으면 같은 자리다.
      합집합으로 둔다 — 한쪽에서 지운 것을 여기서 알 길이 없어서, 지움을 따라가면
      다른 기기에서 어제 뚫은 것까지 같이 날아간다. 되살아나면 다시 지우는 쪽이 싸다 */
@@ -2300,6 +2305,7 @@ function wonLinePath(set, doc, i) {
 /* 원문 묶음 → 복습 엔진이 아는 모양. 빈칸 하나가 카드 하나다 */
 function wonBuild() {
   wonReanchor();
+  if (wonHintAuto()) persist();
   for (let k = DATA.length - 1; k >= 0; k--) if (DATA[k].kind === "won") DATA.splice(k, 1);
   for (const set of WON) {
     if (isHidden(set.id)) continue;
@@ -2650,6 +2656,26 @@ function wonHintLeft(quiz, doc) {
   const mine = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
   return (doc.hint || []).filter(h => !mine.some(x => x.i === h[0] && h[1] < x.e && x.s < h[2])).length;
 }
+/* 추천 자리 하나를 뚫는다. 이미 뚫어 둔 자리와 겹치면 건너뛴다(손으로 잡은 범위를 덮어쓰지 않는다).
+   돌려주는 값: 0 건너뜀 · 1 새로 뚫음 · 2 새로 뚫었고 지난 기록을 이어받음 */
+function wonHintOne(quiz, doc, dk, h, L) {
+  const i = h[0], line = doc.lines[i] || "";
+  let a = h[1], b = h[2];
+  while (a < b && /\s/.test(line[a])) a++;
+  while (b > a && /\s/.test(line[b - 1])) b--;
+  if (b - a < 1) return 0;
+  const mine = L.filter(x => x.q === quiz.id && x.dk === dk && x.i === i && !x.o);
+  if (mine.some(x => a < x.e && x.s < b)) return 0;      // 이미 뚫어 둔 자리는 그대로 둔다
+  const nb = {
+    q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
+    ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
+  };
+  /* 떼어 둔 같은 자리가 있으면 되살린다 — 지난 기록이 그 열쇠에 붙어 있다 (wonAdd 와 같은 규칙) */
+  const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
+  if (off >= 0) L.splice(off, 1);
+  L.push(nb);
+  return history(wonSid(quiz.id, nb)).length ? 2 : 1;
+}
 function wonHintPunch(card) {
   const quiz = DATA.find(z => z.id === card.dataset.won);
   const dk = card.dataset.dk;
@@ -2658,32 +2684,43 @@ function wonHintPunch(card) {
   const L = wonList();
   let added = 0, kept = 0;
   for (const h of doc.hint) {
-    const i = h[0], line = doc.lines[i] || "";
-    let a = h[1], b = h[2];
-    while (a < b && /\s/.test(line[a])) a++;
-    while (b > a && /\s/.test(line[b - 1])) b--;
-    if (b - a < 1) continue;
-    const mine = L.filter(x => x.q === quiz.id && x.dk === dk && x.i === i && !x.o);
-    if (mine.some(x => a < x.e && x.s < b)) continue;      // 이미 뚫어 둔 자리는 그대로 둔다
-    const nb = {
-      q: quiz.id, dk: dk, k: wonKey(doc, i, a, b), a: line.slice(a, b),
-      ln: line.slice(0, 200), dt: doc.title, i: i, s: a, e: b
-    };
-    /* 떼어 둔 같은 자리가 있으면 되살린다 — 지난 기록이 그 열쇠에 붙어 있다 (wonAdd 와 같은 규칙) */
-    const off = L.findIndex(x => x.o && x.q === nb.q && x.dk === nb.dk && x.k === nb.k);
-    if (off >= 0) L.splice(off, 1);
-    L.push(nb);
-    if (history(wonSid(quiz.id, nb)).length) kept++;
-    added++;
+    const r = wonHintOne(quiz, doc, dk, h, L);
+    if (r) added++;
+    if (r === 2) kept++;
   }
   persist();
   wonBuild();
   const keepPlace = wonKeepPlace(card);
   renderQuiz(quiz.id, false);
   keepPlace();
-  toast(added ? "비교 포인트 " + added + "곳을 빈칸으로 만들었어요"
+  const what = doc.hintLabel || "비교 포인트";
+  toast(added ? what + " " + added + "곳을 빈칸으로 만들었어요"
     + (kept ? " (지난 기록 " + kept + "곳 이어받음)" : "")
     : "새로 뚫을 자리가 없어요 — 이미 다 뚫려 있어요");
+}
+
+/* hintAuto 문서(수학 성취기준 핵심 키워드)는 누르지 않아도 한 번만 뚫는다.
+   한 번 뚫은 자리는 S.wonHintDone 에 적어 두어, 채영님이 빼면 다시 뚫지 않는다.
+   나중에 키워드를 더하면 더한 것만 새로 뚫린다. 이미 뚫린 자리와 겹치면 건너뛴다 */
+function wonHintAuto() {
+  const done = (S.wonHintDone = (S.wonHintDone && typeof S.wonHintDone === "object") ? S.wonHintDone : {});
+  const L = wonList();
+  let n = 0;
+  for (const set of WON) {
+    if (isHidden(set.id)) continue;
+    for (const doc of set.docs) {
+      if (!doc.hintAuto || !doc.hint) continue;
+      const dk = wonDocKey(doc);
+      for (const h of doc.hint) {
+        const id = set.id + "|" + dk + "|" + wonKey(doc, h[0], h[1], h[2]);
+        if (done[id]) continue;
+        done[id] = Date.now();
+        if (wonHintOne(set, doc, dk, h, L)) n++;
+      }
+    }
+  }
+  if (n) toast("핵심 키워드 " + n + "곳을 빈칸으로 뚫어 두었어요");
+  return n;
 }
 
 function wonCardHtml(quiz, doc, qi, pred) {
@@ -2694,7 +2731,7 @@ function wonCardHtml(quiz, doc, qi, pred) {
   const body = wonBodyHtml(doc, i => wonLineHtml(quiz, doc, i, blanks, pred));
   const left = WON_EDIT ? wonHintLeft(quiz, doc) : 0;
   const acts = WON_EDIT
-    ? `${left ? `<button class="btn primary" data-act="won-hint">비교 포인트 ${left}곳 한 번에 빈칸</button>` : ""}
+    ? `${left ? `<button class="btn primary" data-act="won-hint">${esc(doc.hintLabel || "비교 포인트")} ${left}곳 한 번에 빈칸</button>` : ""}
        ${blanks.length ? `<span class="ct-tip">노란 자리를 누르면 빈칸이 없어져요</span>` : ""}`
     : (blanks.length ? `<button class="btn primary" data-act="ct-grade">채점하기</button>
          <button class="btn ghost" data-act="ct-reveal">그냥 정답 보기</button>
