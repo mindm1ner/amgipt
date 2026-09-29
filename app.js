@@ -598,15 +598,36 @@ const NEW_PER_DAY = Infinity;
    "sj:사회" = 과목 하나 · "ar:사회|정치" = 영역 하나.
    홈이 왼쪽 메뉴로 바뀌면서 세션은 늘 어딘가에서 시작된다 (전 범위 무작위였던 오늘의 PT를 없앴다). */
 function rangeOf(quiz) { return quiz.range || quiz.title; }
+
+/* 문서 묶음(내체표·성취기준·안내서)은 과목이 range 에 들어 있다. 그래서 과학·음악처럼
+   그 묶음에만 자료가 있는 과목은 왼쪽 메뉴에 아예 안 떴다 (2026-09-29).
+   세트를 옮기지 않고 **그 과목 화면에도 한 줄 더 건다**. 세트 id·기록 열쇠는 그대로다.
+   rowOf(세트, 과목) = 그 과목 화면에서의 줄 이름, 안 걸리면 null */
+const DOC_GROUPS = { "내체표": "내용 체계표", "성취기준": "성취기준 원문", "안내서": "과목 안내서" };
+const TONGHAP_SUBJ = new Set(["바른 생활", "슬기로운 생활", "즐거운 생활"]);
+// 메뉴 차례 = 교육과정 고시 차례. 여기 없는 과목은 뒤에 붙는다
+const SUBJ_ORDER = ["국어", "수학", "영어", "사회", "도덕", "과학", "체육", "음악", "미술",
+                    "실과", "통합교과", "총론", "창체"];
+function crossSubject(quiz) {
+  if (!DOC_GROUPS[quiz.subject] || !quiz.range) return null;
+  return TONGHAP_SUBJ.has(quiz.range) ? "통합교과" : quiz.range;
+}
+function rowOf(quiz, s) {
+  if (quiz.subject === s) return rangeOf(quiz);
+  if (crossSubject(quiz) !== s) return null;
+  const base = DOC_GROUPS[quiz.subject];
+  return TONGHAP_SUBJ.has(quiz.range) ? quiz.range + " " + base : base;
+}
+
 function inScope(x, scope) {
   if (!scope) return true;
-  if (scope.startsWith("sj:")) return x.quiz.subject === scope.slice(3);
+  if (scope.startsWith("sj:")) return rowOf(x.quiz, scope.slice(3)) !== null;
   if (scope.startsWith("qz:")) return x.quiz.id === scope.slice(3);
   /* "mx:묶음" = 여러 세트를 한 판으로 섞어 도는 묶음 (영어교육론 원문 빈칸 8개 장 → mixGroup) */
   if (scope.startsWith("mx:")) return x.quiz.mixGroup === scope.slice(3);
   if (scope.startsWith("ar:")) {
     const i = scope.indexOf("|");
-    return x.quiz.subject === scope.slice(3, i) && rangeOf(x.quiz) === scope.slice(i + 1);
+    return rowOf(x.quiz, scope.slice(3, i)) === scope.slice(i + 1);
   }
   return true;
 }
@@ -1048,7 +1069,8 @@ function openRangeSheet(name, subject) {
      이름만으로 모으면 남의 과목 세트가 딸려 오므로 과목으로 한 번 더 거른다.
      subject 없이 부르면 예전처럼 이름만으로 모은다(다른 호출부가 생겨도 안 깨지게) */
   let quizzes = (rangeGroups().get(name)) || [];
-  if (subject) quizzes = quizzes.filter(q => q.subject === subject);
+  /* 과목 화면의 줄은 rowOf 이름이라(과학 '내용 체계표') 과목 묶음에서 바로 꺼낸다 */
+  if (subject) quizzes = ((subjectGroups().get(subject) || new Map()).get(name)) || [];
   if (!quizzes.length) return;
   /* 같은 모드가 둘 이상이면(미술 원문이 성취기준·안내서 둘) 이름만으로는 못 가른다.
      그럴 때만 어디서 온 자료인지를 붙인다 */
@@ -1106,14 +1128,20 @@ function openRangeSheet(name, subject) {
 /* 과목 > 영역 묶음. 왼쪽 메뉴가 쓴다 */
 function subjectGroups() {
   const subs = new Map();
-  for (const quiz of DATA) {
-    if (!subs.has(quiz.subject)) subs.set(quiz.subject, new Map());
-    const rm = subs.get(quiz.subject);
-    const key = quiz.range || quiz.title;
+  const put = (s, key, quiz) => {
+    if (!subs.has(s)) subs.set(s, new Map());
+    const rm = subs.get(s);
     if (!rm.has(key)) rm.set(key, []);
     rm.get(key).push(quiz);
+  };
+  for (const quiz of DATA) {
+    put(quiz.subject, rangeOf(quiz), quiz);
+    const cs = crossSubject(quiz);      // 문서 묶음 세트는 제 과목에도 한 줄 (rowOf)
+    if (cs) put(cs, rowOf(quiz, cs), quiz);
   }
-  return subs;
+  /* 과목은 고시 차례, 그 뒤에 기타, 문서 묶음은 맨 끝 */
+  const rank = s => DOC_GROUPS[s] ? 2000 : (SUBJ_ORDER.includes(s) ? SUBJ_ORDER.indexOf(s) : 1000);
+  return new Map([...subs.entries()].sort((a, b) => rank(a[0]) - rank(b[0])));
 }
 
 function doExport() {
@@ -1144,6 +1172,11 @@ function menuItem(sel, icon, name, count, hot) {
     ${count ? `<span class="${hot ? "mdue" : "mct"}">${count}</span>` : ""}</button>`;
 }
 
+function subjMenuItem(s) {
+  const c = queueCounts("sj:" + s);
+  return menuItem("sj:" + s, "", s, c.relearn + c.review || c.all, !!(c.relearn + c.review));
+}
+
 function homeMenuHtml() {
   const qc = queueCounts();
   const due = qc.relearn + qc.review;
@@ -1156,10 +1189,10 @@ function homeMenuHtml() {
       ${menuItem("st:fresh", "plus", "아직 안 함", qc.fresh)}
     </div>
     <div class="sgroup"><div class="slabel">과목</div>
-      ${[...subj.keys()].map(s => {
-        const c = queueCounts("sj:" + s);
-        return menuItem("sj:" + s, "", s, c.relearn + c.review || c.all, !!(c.relearn + c.review));
-      }).join("")}
+      ${[...subj.keys()].filter(s => !DOC_GROUPS[s]).map(subjMenuItem).join("")}
+    </div>
+    <div class="sgroup"><div class="slabel">문서</div>
+      ${[...subj.keys()].filter(s => DOC_GROUPS[s]).map(subjMenuItem).join("")}
     </div>
     <div class="sgroup"><div class="slabel">자료</div>
       ${menuItem("st:sets", "pen", "내 세트", mysets().length)}
