@@ -511,6 +511,20 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .sgf .lbl { font-size: .76rem; font-weight: 700; color: var(--accent); display: block; margin-bottom: 3px; }
 .sgf-fill { font-weight: 700; background: #ffe9a8; color: var(--ink); border-radius: 4px; padding: 0 3px; }
 .sgf-mk { font-size: .7em; font-weight: 600; color: var(--sub); margin-right: 2px; }
+/* 나란히 칸: 통합교과 바·즐·슬 성취기준 빈칸. 넓으면 세 칸 가로, 좁으면 위아래 */
+.sgc { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 4px; }
+.sgc-col { background: var(--bg); border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;
+  word-break: keep-all; text-wrap: pretty; }
+.sgc-col.empty { opacity: .45; }
+.sgc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: .8rem; }
+.sgc-head b { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.sgc-head span { color: var(--sub); white-space: nowrap; }
+.sgc-text { font-size: .92rem; line-height: 1.7; color: var(--ink); }
+.sgc-ask { font-size: .8rem; line-height: 1.55; color: var(--sub); }
+.sgc .part-row { flex-direction: column; align-items: stretch; gap: 4px; }
+.sgc .part-row .plabel { min-width: 0; font-size: .8rem; }
+.sgc .answer { width: 100%; min-width: 0; }
+@media (max-width: 640px) { .sgc { grid-template-columns: 1fr; } }
 .ai-status { font-size: .82rem; color: var(--sub); margin-bottom: 10px; }
 .ai-diag {
   background: var(--bg); border: 1px solid var(--line); border-radius: 12px;

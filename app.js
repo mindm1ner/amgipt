@@ -344,19 +344,45 @@ for (const set of (window.DAJIGI_SGI || [])) {
       ...q,
       points: 1,
       body: "",
-      frame: `성취기준 → 내용 요소 · ${q.gr} · ${q.area}`,
+      frame: q.frame || `성취기준 → 내용 요소 · ${q.gr} · ${q.area}`,
       subs: q.subs.map(s => ({
         /* no 는 기록 열쇠라 내용 요소까지 붙어 길다. 목록에 보일 이름은 범주만 */
-        no: s.no, sn: s.cat, type: "term", hideHead: true, points: 1,
+        no: s.no, sn: s.cols ? null : s.cat, type: "term", hideHead: true, points: 1,
         prompt: s.ask,
         answer: s.a,
-        parts: [{ label: "내용 요소", accept: [s.a] }],
-        ct: { cat: s.cat, gr: q.gr, area: q.area },
+        /* 나란히 칸(cols): 통합교과 바·즐·슬 성취기준을 한 화면에 놓고 칸마다 빈칸을 뚫는다.
+           칸이 여럿이라 내용 요소 하나를 묻는 진단(ct)은 안 붙인다 */
+        cols: s.cols || null,
+        parts: s.parts || [{ label: "내용 요소", accept: [s.a] }],
+        ct: s.cols ? null : { cat: s.cat, gr: q.gr, area: q.area },
         /* 빈칸을 채운 성취기준. 답을 공개할 때 같이 보인다 */
         sgiFull: s.full ? { code: q.no, ...s.full } : null
       }))
     }))
   });
+}
+
+/* 나란히 칸: 바·즐·슬 성취기준을 왼쪽부터 놓고, 칸마다 뚫린 문장과 입력칸을 둔다.
+   입력칸은 sub.parts 차례 그대로 그린다 (채점이 DOM 차례로 읽는다) */
+function sgcHtml(sub, id) {
+  let pi = 0;
+  return `<div class="sgc">${sub.cols.map(c => {
+    if (c.empty) return `<div class="sgc-col empty"><div class="sgc-head"><b>${esc(c.subj)}</b><span>${esc(c.code)}</span></div></div>`;
+    const rows = c.parts.map(p => {
+      const i = pi++;
+      return `<div class="part-row"><span class="plabel">${esc(p.mk)}</span>
+        <input class="answer" data-part="${i}" autocomplete="off" value="${esc(draftGet(id + "#" + i, id))}"></div>`;
+    }).join("");
+    return `<div class="sgc-col"><div class="sgc-head"><b>${esc(c.subj)}</b><span>${esc(c.code)}</span></div>
+      <div class="sgc-text">${esc(c.text)}</div>
+      ${c.ask ? `<div class="sgc-ask">${esc(c.ask)}</div>` : ""}
+      ${rows}</div>`;
+  }).join("")}</div>`;
+}
+/* 나란히 칸 답 공개: 칸마다 빈칸을 채운 성취기준 */
+function sgcFullHtml(cols) {
+  if (!cols) return "";
+  return cols.filter(c => !c.empty).map(c => sgiFullHtml({ code: c.code, ...c.full })).join("");
 }
 
 /* 성취기준형 답 공개: 빈칸 자리를 채운 성취기준 전문. 채운 말은 ㉠㉡ 표시와 함께 칠한다 */
@@ -1639,7 +1665,9 @@ function subBlockHtml(quiz, q, sub, qi, si) {
       </div>` + bodyHtml;
   }
   let inputHtml = "";
-  if (sub.type === "term") {
+  if (sub.cols) {
+    inputHtml = sgcHtml(sub, id);
+  } else if (sub.type === "term") {
     /* 순서 무관 카드는 칸 번호를 안 보여 준다 — ①이 붙어 있으면 그 자리에 그 답을 써야 하는 줄 안다 */
     inputHtml = sub.parts.map((p, pi) => `
       <div class="part-row"><span class="plabel">${esc(sub.anyOrder ? "·" : p.label)}</span>
@@ -4225,6 +4253,7 @@ function showReveal(subEl, graded) {
     <div class="model"><span class="lbl">모범답안</span><div class="md">${md(sub.answer)}</div></div>
     ${sub.note ? `<div class="note">${esc(sub.note)}</div>` : ""}
     ${sgiFullHtml(sub.sgiFull)}
+    ${sgcFullHtml(sub.cols)}
     <div class="verdict-row">
       <span class="vlbl">내 판정${suggest ? ` (제안: ${vName(suggest)})` : ""}</span>
       <div class="vbtns">
