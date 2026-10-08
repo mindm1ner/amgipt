@@ -157,6 +157,8 @@ function mergeRemote(remote) {
 async function pullAndMerge() {
   const k = syncKey();
   if (!k) return;
+  const wonSig = () => wonList().filter(b => !b.o).map(b => b.q + "|" + b.dk + "|" + b.k).sort().join("\n");
+  const before = wonSig();
   try {
     const r = await syncCall({ op: "pull", key: k });
     if (r && r.data && r.data.records) { mergeRemote(r.data); persist(); }
@@ -165,7 +167,21 @@ async function pullAndMerge() {
   /* 다른 기기에서 뚫은 빈칸이 딸려 왔을 수 있다. 카드로 올리고 화면도 다시 그린다 */
   wonBuild();
   if (!location.hash || location.hash === "#") renderHome();
-  else if (/^#q\/won-/.test(location.hash)) render();
+  else if (/^#q\/won-/.test(location.hash) && wonSig() !== before) {
+    /* ⚠️ 다른 창에 30초 넘게 갔다 오면 여기로 온다. 예전엔 빈칸이 그대로여도 통째로 다시 그려서
+       쓰던 답이 날아가고 맨 위로 튀었다(2026-10-08). 빈칸이 바뀐 때만 그리고, 쓴 답·스크롤은 되살린다 */
+    const typed = {};
+    document.querySelectorAll(".ctb[data-sid] input.ctin").forEach(el => {
+      if (el.value) typed[el.closest(".ctb").dataset.sid] = el.value;
+    });
+    const y = window.scrollY;
+    render();
+    document.querySelectorAll(".ctb[data-sid] input.ctin").forEach(el => {
+      const v = typed[el.closest(".ctb").dataset.sid];
+      if (v) el.value = v;
+    });
+    window.scrollTo(0, y);
+  }
   else updateSyncFoot();
   pushNow();
 }
