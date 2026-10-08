@@ -277,7 +277,7 @@ details.rules ul { margin: 8px 0 2px 18px; color: var(--sub); }
   padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow);
 }
 .q-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-.q-head .qno { font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; }
+.q-head .qno { font-family: "Hahmlet", "Pretendard Variable", serif; font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; }
 .q-head .qpts { color: var(--accent); font-weight: 700; font-size: .9rem; }
 .q-frame { font-size: .78rem; color: var(--faint); margin-bottom: 12px; }
 .q-body { overflow-x: auto; }
