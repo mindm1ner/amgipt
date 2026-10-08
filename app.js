@@ -1029,7 +1029,10 @@ const ICONS = {
 function ico(name) {
   return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
 }
-function md(text) { return marked.parse(text || "", { gfm: true, breaks: true }); }
+/* 물결(~)은 범위 표시다(㉠~㉢, 3~4학년군). GFM 은 ~ 하나짜리 쌍도 취소선으로 읽어서
+   한 줄에 물결이 둘 있으면 그 사이가 줄 그어지고 물결이 사라진다. \~ 이스케이프는 한글 옆에서
+   안 먹어서 문자 참조로 바꿔 넣는다. 자료에 ~~취소선~~ 을 쓰는 곳은 없다 */
+function md(text) { return marked.parse((text || "").replace(/~/g, "&#126;"), { gfm: true, breaks: true }); }
 function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function vName(v) { return v === "O" ? "O 맞음" : v === "T" ? "△ 부분" : "X 틀림"; }
 function dotsHtml(id) {
