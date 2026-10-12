@@ -1725,12 +1725,18 @@ function ctAllCats(quiz) { return (quiz && quiz.cats) || CT_CATS; }
 function ctCats(quiz) {
   const key = quiz.range;
   const saved = S.ctScope && S.ctScope[key];
-  const list = saved || CT_SCOPE_DEFAULT[key] || ctAllCats(quiz);
-  return new Set(list);
+  if (!saved) return new Set(CT_SCOPE_DEFAULT[key] || ctAllCats(quiz));
+  /* 저장한 뒤에 새로 생긴 범주(국어 '하위 범주', 10/12)는 켜 둔다. 안 그러면 거르개를
+     한 번이라도 만진 사람에게는 새 빈칸이 꺼진 채로 와서 안 생긴 것처럼 보인다.
+     저장할 때 보이던 범주 목록과 견줘서 그 뒤에 생긴 것만 더한다 */
+  const seen = (S.ctScopeSeen && S.ctScopeSeen[key]) || CT_CATS;
+  return new Set([...saved, ...ctAllCats(quiz).filter(c => !seen.includes(c))]);
 }
-function setCtCats(subject, set) {
+function setCtCats(quiz, set) {
   S.ctScope = S.ctScope || {};
-  S.ctScope[subject] = [...set];
+  S.ctScope[quiz.range] = [...set];
+  S.ctScopeSeen = S.ctScopeSeen || {};
+  S.ctScopeSeen[quiz.range] = [...ctAllCats(quiz)];
   persist();
 }
 function ctCatCount(quiz, cat) {
@@ -2684,11 +2690,13 @@ function wonLineHtml(quiz, doc, i, blanks, pred) {
      cells [줄, 줄, 줄]        열마다 줄 하나 (성취기준 세 칸 판)
      segs  [{c,n,i}…]         c열에서 n칸을 차지하는 줄 i (안내서 세 칸 판)
    ⭐ segs 는 **글자까지 같은 이웃 교과를 한 칸으로 합치려고** 있다. 같은 문장을 세 번
-      외울 이유가 없어서 줄도 하나만 싣는다. 비어 있는 열은 '없음' 칸으로 메운다. */
+      외울 이유가 없어서 줄도 하나만 싣는다. 비어 있는 열은 '없음' 칸으로 메운다.
+   cells 의 한 자리가 [줄, 줄 …] 배열이면 한 칸에 줄을 여럿 쌓는다 (내체표 원문: 내용 요소 한 줄씩) */
 function wgCells(r, ncol, lineHtml) {
   const cell = (ci, n, i) => `<div class="wg-cell wg-c${ci}${n > 1 ? " wg-wide" : ""}"${
     n > 1 ? ` style="grid-column:span ${n}" data-same="${n === ncol ? "세" : "두"} 교과 같음"` : ""
-    }>${i == null ? `<span class="wg-none">${esc(r.none || "없음")}</span>` : lineHtml(i)}</div>`;
+    }>${i == null ? `<span class="wg-none">${esc(r.none || "없음")}</span>`
+      : Array.isArray(i) ? i.map(lineHtml).join("") : lineHtml(i)}</div>`;
   if (r.cells) return r.cells.map((i, ci) => cell(ci, 1, i)).join("");
   const by = {};
   for (const s of (r.segs || [])) by[s.c] = s;
@@ -3271,8 +3279,8 @@ async function ctDiagnose(card) {
                         area: area.get(s.no) || "", gr: (s.ct && s.ct.gr) || "",
                         ans: effByNo.get(s.no) || s.answer })),
       asked.map(w => ({ no: w.no, val: w.val, hint: w.mis ? `${w.mis.ref}번 칸의 정답과 글자가 같음` : "" })),
-      quiz.subject === "내체표" ? "표" : "조항",
-      quiz.subject === "내체표"   // 같은 칸 안에서는 순서 무관 (표 빈칸형만)
+      quiz.kind === "ct" && quiz.subject === "내체표" ? "표" : "조항",
+      quiz.kind === "ct" && quiz.subject === "내체표"   // 같은 칸 안에서는 순서 무관 (표 빈칸형만. 실과 원문 표는 조항처럼)
     );
     const byId = new Map(wrong.map(w => [ctNo(w.no), w]));
     let n = 0;
@@ -4710,7 +4718,7 @@ function onAppClick(e) {
     const c = btn.dataset.cat;
     set.has(c) ? set.delete(c) : set.add(c);
     if (!set.size) return;   // 하나는 켜 둔다. 다 끄면 풀 게 없다
-    setCtCats(quiz.range, set);
+    setCtCats(quiz, set);
     renderQuiz(quiz.id, false);
     return;
   }
