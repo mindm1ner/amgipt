@@ -367,7 +367,8 @@ for (const set of (window.DAJIGI_SGI || [])) {
 function sgcHtml(sub, id) {
   let pi = 0;
   return `<div class="sgc">${sub.cols.map(c => {
-    if (c.empty) return `<div class="sgc-col empty"><div class="sgc-head"><b>${esc(c.subj)}</b><span>${esc(c.code)}</span></div></div>`;
+    if (c.empty) return `<div class="sgc-col empty"><div class="sgc-head"><b>${esc(c.subj)}</b><span>${esc(c.code)}</span></div>
+      ${c.text ? `<div class="sgc-text">${esc(c.text)}</div>` : ""}</div>`;
     const rows = c.parts.map(p => {
       const i = pi++;
       return `<div class="part-row"><span class="plabel">${esc(p.mk)}</span>

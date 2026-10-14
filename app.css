@@ -515,7 +515,7 @@ textarea.answer { resize: vertical; min-height: 74px; }
 .sgc { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 4px; }
 .sgc-col { background: var(--bg); border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;
   word-break: keep-all; text-wrap: pretty; }
-.sgc-col.empty { opacity: .45; }
+.sgc-col.empty { opacity: .55; }
 .sgc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: .8rem; }
 .sgc-head b { font-weight: 700; color: var(--accent); white-space: nowrap; }
 .sgc-head span { color: var(--sub); white-space: nowrap; }
