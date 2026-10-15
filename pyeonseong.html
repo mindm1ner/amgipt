@@ -269,9 +269,9 @@ function next(){clearInterval(timerId);
   if(G.i>=G.qs.length||G.lives<=0)return result();
   const q=G.qs[G.i];q.answered=false;q.chips=[];
   const m=G.mode;
-  if(m==='build'){frame('<div class="qhd">편성 악기를 모두</div><div class="qbig">'+esc(q.e.q)+'</div>'+chipBox()+inp('악기 이름 · Enter (향피리 2 = 두 대)')+'<div class="row"><button class="btn pri" id="sub">제출</button></div>');wireChips()}
-  if(m==='score'){frame('<div class="qhd">'+esc(q.s.q)+'</div><img class="qimg" src="img-ps/'+q.s.img+'" alt="악보">'+(q.ans.length>1?chipBox():'')+inp(q.ans.length>1?'악기 '+q.ans.length+'개 · 하나씩 Enter':'악기 이름 · Enter')+(q.ans.length>1?'<div class="row"><button class="btn pri" id="sub">제출</button></div>':''));wireChips()}
-  if(m==='fact'){frame('<div class="qbig">'+esc(q.f.q)+'</div>'+(q.ans.length>1?chipBox():'')+inp(q.ans.length>1?q.ans.length+'개 · 하나씩 Enter':'Enter')+(q.ans.length>1?'<div class="row"><button class="btn pri" id="sub">제출</button></div>':''));wireChips()}
+  if(m==='build'){frame('<div class="qhd">편성 악기를 모두</div><div class="qbig">'+esc(q.e.q)+'</div>'+inp('예: 향피리 2 대금 해금 …')+'<div class="hint">띄어쓰기나 쉼표로 구분 · 수량은 뒤에 숫자 · Enter</div>');wireType()}
+  if(m==='score'){frame('<div class="qhd">'+esc(q.s.q)+'</div><img class="qimg" src="img-ps/'+q.s.img+'" alt="악보">'+inp(q.ans.length>1?'악기 '+q.ans.length+'개':'악기 이름'));wireType()}
+  if(m==='fact'){frame('<div class="qbig">'+esc(q.f.q)+'</div>'+inp(q.ans.length>1?q.ans.length+'개':'악기 이름'));wireType()}
   if(m==='fix'){q.sel=null;frame('<div class="qhd">끼어든 악기 하나를 누르고, 원래 악기를 쓰기</div><div class="qbig">'+esc(q.e.q)+'</div><div class="chips" id="fl">'+q.list.map((x,i)=>'<span class="chip tap" data-i="'+i+'">'+esc(x.t)+(x.n>1?'<span class="n">×'+x.n+'</span>':'')+'</span>').join('')+'</div>'+inp('원래 있어야 할 악기 · Enter'));
     document.querySelectorAll('#fl .chip').forEach(c=>c.onclick=()=>{if(q.answered)return;q.sel=+c.dataset.i;document.querySelectorAll('#fl .chip').forEach(x=>x.classList.toggle('sel',x===c));$('#in').focus()});
     $('#fm').onsubmit=e=>{e.preventDefault();if(q.answered)return;const v=$('#in').value.trim();if(q.sel===null){shake();return}if(!v)return;q.typed=v;submit(false)}}
@@ -305,7 +305,7 @@ function dragStart(e,el){const q=G.qs[G.i];if(q.answered)return;e.preventDefault
       const z=zoneAt(ev.clientX,ev.clientY);if(z)place(d.inst,z.dataset.b);else drawBoardSort()};
   addEventListener('pointermove',mv);addEventListener('pointerup',up);addEventListener('pointercancel',up)}
 const chipBox=()=>'<div class="chips" id="ch"></div>';
-const inp=ph=>'<form class="inp" id="fm" autocomplete="off"><input id="in" type="text" placeholder="'+ph+'" autocapitalize="off" spellcheck="false" enterkeyhint="enter"><button class="btn" type="submit">넣기</button></form>';
+const inp=ph=>'<form class="inp" id="fm" autocomplete="off"><input id="in" type="text" placeholder="'+ph+'" autocapitalize="off" spellcheck="false" enterkeyhint="enter"><button class="btn pri" type="submit">제출</button></form>';
 function drawChips(){const c=$('#ch');if(!c)return;const q=G.qs[G.i];
   c.innerHTML=q.chips.map((x,i)=>'<span class="chip">'+esc(x.name)+(x.n>1?'<span class="n">×'+x.n+'</span>':'')+'<button type="button" data-i="'+i+'" aria-label="빼기">×</button></span>').join('');
   c.querySelectorAll('button').forEach(b=>b.onclick=()=>{q.chips.splice(+b.dataset.i,1);drawChips();$('#in').focus()})}
@@ -316,10 +316,26 @@ function wireChips(){const q=G.qs[G.i],single=(G.mode==='score'||G.mode==='fact'
     raw.split(/[,，、]/).map(s=>s.trim()).filter(Boolean).forEach(r=>{const p=parse(r);const ex=q.chips.find(c=>same(c.name,p.name));if(ex)ex.n+=p.n;else q.chips.push(p)});
     $('#in').value='';drawChips()};
   const sb=$('#sub');if(sb)sb.onclick=()=>{const raw=$('#in').value.trim();if(raw){$('#fm').requestSubmit?$('#fm').requestSubmit():$('#fm').onsubmit(new Event('submit'))}submit(false)}}
+// 한 칸에 쓴 것을 악기 목록으로: 띄어쓰기·쉼표로 자르고, 숫자·"두 대"는 앞 악기의 수량, 띄어 쓴 이름은 붙여 본다
+const KNOWN=new Set();
+DATA.ens.forEach(e=>{e.items.forEach(x=>names(x).forEach(n=>KNOWN.add(norm(n))));(e.opt||[]).concat(e.traps).forEach(n=>KNOWN.add(norm(n)))});
+DATA.scores.concat(DATA.facts).forEach(x=>x.ans.forEach(a=>a.forEach(n=>KNOWN.add(norm(n)))));
+function tokenize(raw){
+  const s=String(raw).replace(/[×xX*]\s*(\d)/g,' $1').replace(/(\d)\s*(대|개|명)(?=$|[\s,，、·])/g,'$1')
+    .replace(/(^|[\s,，、·])(둘|두\s*대)(?=$|[\s,，、·])/g,' 2').replace(/(^|[\s,，、·])(셋|세\s*대)(?=$|[\s,，、·])/g,' 3');
+  const t=s.split(/[\s,，、·;/]+/).filter(Boolean),out=[];
+  for(let i=0;i<t.length;i++){let w=t[i];
+    if(/^\d+$/.test(w)){if(out.length)out[out.length-1].n=Math.max(1,Math.min(9,+w));continue}
+    let n=1;const m=w.match(/^(.*?)(\d+)$/);if(m&&m[1]){w=m[1];n=Math.max(1,Math.min(9,+m[2]))}
+    if(i+1<t.length&&!KNOWN.has(norm(w))&&KNOWN.has(norm(w+t[i+1]))){w=w+t[i+1];i++}
+    const ex=out.find(c=>same(c.name,w));if(ex)ex.n+=n;else out.push({name:w,n})}
+  return out}
+function wireType(){const q=G.qs[G.i];
+  $('#fm').onsubmit=e=>{e.preventDefault();if(q.answered)return;const raw=$('#in').value.trim();if(!raw){shake();return}q.chips=tokenize(raw);submit(false)}}
 function shake(){const c=$('#cd');c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake')}
 function startTimer(){const q=G.qs[G.i];q.t0=Date.now();const bar=$('#tm i'),tm=$('#tm');
   timerId=setInterval(()=>{const left=Math.max(0,1-(Date.now()-q.t0)/1000/q.sec);if(bar)bar.style.transform='scaleX('+left+')';if(tm)tm.classList.toggle('low',left<.3);
-    if(left<=0){clearInterval(timerId);if(G.mode==='fix'&&$('#in')&&$('#in').value.trim())q.typed=$('#in').value.trim();submit(true)}},100)}
+    if(left<=0){clearInterval(timerId);const v=$('#in')?$('#in').value.trim():'';if(v){if(G.mode==='fix')q.typed=v;else q.chips=tokenize(v)}submit(true)}},100)}
 // 정답 묶음(이름·다른 이름·수)과 쓴 칩 대조
 function grade(groups,opt,chips){const used=chips.map(()=>0),res=groups.map(g=>{let got=0;chips.forEach((c,i)=>{if(names(g).some(nm=>same(nm,c.name))){got+=c.n;used[i]=1}});return {g,got}});
   const optUsed=chips.map((c,i)=>!used[i]&&(opt||[]).some(o=>same(o,c.name)));
