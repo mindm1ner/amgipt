@@ -51,6 +51,10 @@ h2{font-size:.95rem;color:var(--sub);font-weight:700;margin:18px 0 8px}
 form.tin{display:flex;gap:8px;margin-top:12px}
 form.tin input{flex:1;min-width:0;font:inherit;font-size:1.05rem;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
 form.tin input:focus{outline:none;border-color:var(--ink)}
+.legend{font-size:.82rem;color:var(--sub);margin-top:8px;line-height:1.7}
+.legend b{color:var(--ink)}
+details.leg{margin-top:8px;font-size:.85rem;color:var(--sub)}
+details.leg summary{cursor:pointer}
 .tbook{font-size:.85rem;color:var(--sub);text-align:center;margin-top:4px}
 .mode b{font-size:1.08rem}
 .mode .d{font-size:.85rem;color:var(--sub)}
@@ -166,6 +170,7 @@ const MODES=[
  {id:'fill',t:'빈칸 채우기',d:'가려진 칸의 구음',sec:25},
  {id:'spot',t:'틀린 칸 찾기',d:'한 칸이 바뀐 보표',sec:20},
  {id:'struct',t:'구조 맞히기',d:'장단 이름 → 소박·박',sec:10},
+ {id:'note',t:'음표 장단',d:'서양 음표로 쓴 장단 → 이름·구음 쓰기(2012 중등 36 꼴)',sec:25},
  {id:'staff',t:'악보 → 장단',d:'오선보 ㉠ 자리의 구음·부호·치는 법, 강세 자리 쓰기',sec:30}
 ];
 const ROUND=10,LIVES=3;
@@ -255,6 +260,12 @@ function build(mode,only){
   if(mode==='struct'){const pool=JD.filter(j=>j.sobak);const keyOf=j=>j.id+':0:struct';
     const src=only?pool.filter(j=>only.includes(keyOf(j))):pickWeighted(pool,keyOf,ROUND);
     qs=src.map(j=>({key:keyOf(j),j,ln:j.lines[0],ans:j.sobak+'-'+j.bak,opts:STRUCTS.map(([s,b])=>({v:s+'-'+b,t:s+'소박 '+b+'박'}))}))}
+  else if(mode==='note'){
+    const OKK=new Set(['dung','kung','deok','gideok','deoreo']),pool=[];
+    JD.forEach(j=>{if(j.unit!=='sobak'||!j.sobak)return;j.lines.forEach((ln,li)=>{if(ln.cells.every(c=>!c||OKK.has(c[0]))){pool.push({j,ln,li,k:'name'});ln.cells.forEach((c,i)=>{if(c)pool.push({j,ln,li,k:'gu',i})})}})});
+    const keyOf=x=>x.j.id+':'+x.li+':note'+(x.k==='gu'?':'+x.i:'');
+    let src=only?pool.filter(x=>only.includes(keyOf(x))):pickWeighted(pool.filter(x=>x.k==='name'||Math.random()<.25),keyOf,ROUND);
+    qs=src.map(x=>({key:keyOf(x),j:x.j,ln:x.ln,kind:x.k,ti:x.k==='gu'?x.i:-1}))}
   else if(mode==='staff'){
     const pool=[];JD.forEach(j=>{if(j.unit!=='sobak'||!j.sobak)return;const ln=j.lines[0];ln.cells.forEach((c,i)=>{if(c&&STAFF_OK[c[0]])pool.push({j,ln,i})})});
     JD.forEach(j=>{if(j.unit!=='sobak'||!j.sobak)return;const ln=j.lines[0];if(ln.acc.length>=1){pool.push({j,ln,acc:'b'});pool.push({j,ln,acc:'n'})}});
@@ -304,6 +315,7 @@ function next(){clearInterval(timerId);stopPlay();
   if(G.i>=G.qs.length||G.lives<=0)return result();
   if(G.mode==='draw')return drawQ();
   if(G.mode==='staff')return staffQ();
+  if(G.mode==='note')return noteQ();
   const q=G.qs[G.i],j=q.j,mode=G.mode;q.t0=null;q.answered=false;
   let body='';
   if(mode==='name')body='<div class="ask">이 장단의 이름은?</div>'+board(q.ln,j,{noLb:false})+opts(q);
@@ -397,6 +409,51 @@ function drawStaff(el,j,q){const VF=Vex.Flow,per=j.sobak,w=Math.max(330,q.mel.le
   const voice=new VF.Voice({num_beats:per===3?j.bak*3:4,beat_value:per===3?8:4}).setStrict(false);voice.addTickables(notes);
   const beams=VF.Beam.generateBeams(notes,{groups:[per===3?new VF.Fraction(3,8):new VF.Fraction(1,4)]});
   new VF.Formatter().joinVoices([voice]).format([voice],w-110);voice.draw(ctx,st);beams.forEach(b=>b.setContext(ctx).draw())}
+// ── 음표 장단: 한 줄 보표, 위 기둥 = 채편(덕), 아래 기둥 = 북편(쿵), 둘 다 = 덩, 빗금 = 더러러러, 꾸밈음 = 기덕 (중등 2012-36 보기 꼴) ──
+const LEG='<b>읽는 법</b> 기둥 위·아래 둘 다 = 덩 · 위로만 = 덕(채편) · 아래로만 = 쿵(북편) · 위 기둥 빗금 = 더러러러 · 앞꾸밈음 = 기덕 · 길이 = 소박 수(♪ 1 · ♩ 2 · ♩. 3)';
+const DUR={1:'8',2:'q',3:'qd',4:'h',6:'hd'};
+function splitGap(g){const out=[];for(const d of [6,4,3,2,1])while(g>=d){out.push(d);g-=d}return out}
+function drawNotes(el,j,ln,mark){const VF=Vex.Flow,per=j.sobak,n=ln.cells.length;
+  const ev=[];ln.cells.forEach((c,i)=>{if(c)ev.push({i,k:c[0]})});
+  const up=[],dn=[];
+  const mk=(dur,dir,k,isMark)=>{const sn=new VF.StaveNote({keys:['b/4'],duration:DUR[dur]||'8',stem_direction:dir});if(dur===3||dur===6)VF.Dot.buildAndAttach([sn],{all:true});
+    if(dir===1&&k==='deoreo')sn.addModifier(new VF.Tremolo(3),0);
+    if(dir===1&&k==='gideok')sn.addModifier(new VF.GraceNoteGroup([new VF.GraceNote({keys:['b/4'],duration:'8',slash:true})]),0);
+    if(isMark){sn.setStyle({fillStyle:'#a26056',strokeStyle:'#a26056'});sn.addModifier(new VF.Annotation('㉠').setFont('serif',15,'bold').setVerticalJustification(dir===1?VF.Annotation.VerticalJustify.TOP:VF.Annotation.VerticalJustify.BOTTOM),0)}
+    return sn};
+  const ghost=d=>new VF.GhostNote({duration:DUR[d]||'8'});
+  ev.forEach((e,x)=>{const gap=(x+1<ev.length?ev[x+1].i:n)-e.i,parts=splitGap(gap),d0=parts[0],isM=e.i===mark;
+    const hasUp=e.k!=='kung',hasDn=e.k==='kung'||e.k==='dung';
+    up.push(hasUp?mk(d0,1,e.k,isM&&true):ghost(d0));dn.push(hasDn?mk(d0,-1,e.k,isM&&!hasUp):ghost(d0));
+    parts.slice(1).forEach(d=>{up.push(ghost(d));dn.push(ghost(d))})});
+  const w=Math.max(340,ev.length*52+120);el.innerHTML='';const r=new VF.Renderer(el,VF.Renderer.Backends.SVG);r.resize(w,150);const ctx=r.getContext();
+  const st=new VF.Stave(6,30,w-12);st.setConfigForLines([0,1,2,3,4].map(i=>({visible:i===2})));st.addTimeSignature(per===3?(j.bak*3)+'/8':(j.bak*2)+'/8').setContext(ctx).draw();
+  const vs=[up,dn].map(t=>new VF.Voice({num_beats:n,beat_value:8}).setStrict(false).addTickables(t));
+  new VF.Formatter().joinVoices(vs).format(vs,w-110);vs.forEach(v=>v.draw(ctx,st))}
+function noteQ(){const q=G.qs[G.i],j=q.j;q.answered=false;q.t0=null;
+  $('#app').innerHTML='<div class="wrap" style="padding-top:14px">'+hud()+'<div class="card" id="dc"><div class="ask">'+(q.kind==='name'?'서양 음표로 적은 장구 장단이다':'이 장단에서 ㉠의 구음')+'<small>'+(q.kind==='name'?'장단 이름':'㉠ 음표의 구음')+'</small></div>'
+    +'<div class="score5" id="sv"></div><details class="leg"><summary>읽는 법</summary><div class="legend">'+LEG+'</div></details>'
+    +'<form class="tin" id="tf" autocomplete="off"><input id="ti" type="text" placeholder="'+(q.kind==='name'?'장단 이름':'구음')+' · Enter" autocapitalize="off" spellcheck="false"><button class="btn pri" type="submit">제출</button></form>'
+    +'<div class="fb" id="fb" aria-live="polite"></div><div id="after"></div></div></div>';
+  $('#quit').onclick=home;
+  try{drawNotes($('#sv'),j,q.ln,q.ti)}catch(e){$('#sv').textContent='음표를 그리지 못했어요(인터넷 연결 확인)'}
+  $('#tf').onsubmit=e=>{e.preventDefault();const v=$('#ti').value.trim();if(!v)return;noteSubmit(v,false)};
+  q.sec=G.m.sec;startTimer();$('#ti').focus()}
+function noteSubmit(v,timeout){const q=G.qs[G.i];if(q.answered)return;q.answered=true;clearInterval(timerId);
+  const j=q.j,t=nz(v);let ok=false;
+  if(q.kind==='name')ok=t.replace(/장단$/,'')===j.name.replace(/장단$/,'');
+  else{const c=q.ln.cells[q.ti];ok=c[0]==='deok'?(t==='덕'||t==='따'):c[0]==='deoreo'?/^더+[러르]{2,}$/.test(t):t===nz(c[1])}
+  ok=ok&&!timeout;
+  const left=q.t0?Math.max(0,1-(Date.now()-q.t0)/1000/q.sec):0;
+  if(ok){G.combo++;G.maxc=Math.max(G.maxc,G.combo);G.right++;G.score+=Math.round((100+left*100)*Math.min(2,1+.1*(G.combo-1)))}
+  else{G.combo=0;G.lives--;G.wrong.push(q)}
+  rec(q.key,ok);sfx(ok);$('#tf').remove();
+  const cls={};if(q.ti>=0)cls[q.ti]=ok?'right':'wrong';
+  const fb=$('#fb');fb.className='fb '+(ok?'ok':'no');
+  fb.innerHTML=(ok?'정답':timeout?'시간 끝':'오답')+'<span class="sub">'+j.name+(j.lines.length>1?' · '+q.ln.label:'')+(q.ti>=0?' · ㉠ = '+q.ln.cells[q.ti][1]:'')+(v&&!ok?' · 쓴 답: '+v.replace(/</g,'&lt;'):'')+'</span>';
+  $('#after').innerHTML='<div class="cap">장구 보표로 보면</div>'+board(q.ln,j,{cls})+'<div class="legend">'+LEG+'</div><div class="tbook">'+q.ln.src+' · 음표 표기 = 중등 2012 1차 36 보기</div><div class="row"><button class="btn" id="hear">'+I.snd+'듣기</button><button class="btn pri" id="nx">'+(G.i+1>=G.qs.length||G.lives<=0?'결과':'다음')+'</button></div>';
+  $('#hear').onclick=()=>playLine(j,q.ln,1);$('#nx').onclick=()=>{G.i++;next()};$('#nx').focus();
+  const hd=document.querySelector('.hud');if(hd){const t=document.createElement('div');t.innerHTML=hud();hd.replaceWith(t.firstChild);$('#quit').onclick=home;$('#tm i').style.transform='scaleX(0)'}}
 function staffAsk(q){
   if(q.kind==='accb')return '이 마디에서 강세(>)를 주어야 하는 박을 모두(몇째 박)';
   if(q.kind==='accn')return '강세(>)가 들어가는 음표의 번호를 모두';
@@ -452,7 +509,7 @@ function drawFill(){const q=G.qs[G.i];const cls={};if(q.sel!==undefined)cls[q.se
   const ok=$('#ok');if(ok){ok.disabled=q.hide.some(i=>q.fillv[i]===undefined);ok.onclick=()=>answer()}}
 function startTimer(){const q=G.qs[G.i],sec=q.sec||G.m.sec;q.t0=Date.now();const bar=$('#tm i'),tm=$('#tm');
   timerId=setInterval(()=>{const left=Math.max(0,1-(Date.now()-q.t0)/1000/sec);if(bar)bar.style.transform='scaleX('+left+')';if(tm)tm.classList.toggle('low',left<.3);
-    if(left<=0){clearInterval(timerId);G.mode==='draw'?drawSubmit(true):G.mode==='staff'?staffSubmit($('#ti')?$('#ti').value.trim():'',true):answer(undefined,true)}},100)}
+    if(left<=0){clearInterval(timerId);G.mode==='draw'?drawSubmit(true):G.mode==='staff'?staffSubmit($('#ti')?$('#ti').value.trim():'',true):G.mode==='note'?noteSubmit($('#ti')?$('#ti').value.trim():'',true):answer(undefined,true)}},100)}
 function answer(v,timeout){const q=G.qs[G.i];if(q.answered)return;q.answered=true;clearInterval(timerId);stopPlay();
   const mode=G.mode,j=q.j;let ok=false;
   if(mode==='name'||mode==='listen'||mode==='struct')ok=!timeout&&v===q.ans;
