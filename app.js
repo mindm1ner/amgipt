@@ -100,13 +100,16 @@ function mergeRemote(remote) {
     for (let j = L.length - 1; j >= 0; j--) if (L[j] && L[j].k && wonDead(L[j])) L.splice(j, 1);
     if (typeof wonBuild === "function") wonBuild();   // 새로 온 빈칸을 카드로 올린다
   }
-  // 장단 오락실: 최고 점수는 큰 쪽, 문제별 기록은 마지막 시각이 늦은 쪽
-  if (remote.jangdan && typeof remote.jangdan === "object") {
-    const J = (S.jangdan = S.jangdan || { best: {}, items: {} });
+  // 음악 오락실(장단·편성): 최고 점수는 큰 쪽, 문제별 기록은 마지막 시각이 늦은 쪽, 그 밖 설정은 없을 때만
+  for (const g of ["jangdan", "pyeonseong"]) {
+    const R = remote[g];
+    if (!R || typeof R !== "object") continue;
+    const J = (S[g] = S[g] || { best: {}, items: {} });
     J.best = J.best || {}; J.items = J.items || {};
-    for (const [k, v] of Object.entries(remote.jangdan.best || {})) J.best[k] = Math.max(J.best[k] || 0, v || 0);
-    for (const [k, v] of Object.entries(remote.jangdan.items || {}))
+    for (const [k, v] of Object.entries(R.best || {})) J.best[k] = Math.max(J.best[k] || 0, v || 0);
+    for (const [k, v] of Object.entries(R.items || {}))
       if (!J.items[k] || (v && (v.t || 0) > (J.items[k].t || 0))) J.items[k] = v;
+    for (const [k, v] of Object.entries(R)) if (k !== "best" && k !== "items" && !(k in J)) J[k] = v;
   }
   // 질문 단위 드릴 통계 병합: 틀린 횟수는 큰 쪽, 맞춘 시각은 최근 쪽
   if (remote.qstat && typeof remote.qstat === "object") {
@@ -1250,6 +1253,7 @@ function homeMenuHtml() {
     </div>
     <div class="sgroup"><div class="slabel">놀이</div>
       <a class="mi" href="#jangdan">${ico("bolt")}<span class="mnm">장단 오락실</span><span class="mct">음악</span></a>
+      <a class="mi" href="#pyeonseong">${ico("bolt")}<span class="mnm">편성 오락실</span><span class="mct">음악</span></a>
     </div>
     <div class="sgroup"><div class="slabel">자료</div>
       ${menuItem("st:sets", "pen", "내 세트", mysets().length)}
@@ -5162,20 +5166,21 @@ function onImportFile(e) {
   });
 }
 
-/* ---------- 장단 오락실(음악) ----------
-   게임은 jangdan.html(음악/장단-게임/_build.py 산출물, 손으로 고치지 말 것)을 iframe 으로 띄운다.
+/* ---------- 음악 오락실(장단·편성) ----------
+   게임은 jangdan.html·pyeonseong.html(음악/장단-게임·편성-게임/_build.py 산출물, 손으로 고치지 말 것)을 iframe 으로 띄운다.
    게임 CSS 가 app.css 와 이름이 겹쳐서(.card .btn .opt …) 한 문서에 섞지 않았다.
-   기록은 postMessage 로 받아 S.jangdan = {best:{모드:점수}, items:{"장단id:줄:모드":{n,w,t}}} 에 두고 동기화한다 */
-function renderJangdan() {
-  const m = ((document.currentScript && document.currentScript.src) ||
-    [...document.scripts].map(s => s.src).find(s => /app\.js/.test(s)) || "").match(/[?&]v=([^&]+)/);
-  $("#app").innerHTML = `<iframe class="jd-frame" src="jangdan.html?embed=1&v=${m ? m[1] : "dev"}" title="장단 오락실"></iframe>`;
+   기록은 postMessage({jd, g}) 로 받아 S[g] = {best:{모드:점수}, items:{열쇠:{n,w,t}}} 에 두고 동기화한다(g 없으면 jangdan) */
+const GAMES = { jangdan: { file: "jangdan.html", title: "장단 오락실" }, pyeonseong: { file: "pyeonseong.html", title: "편성 오락실" } };
+function renderGame(g) {
+  const m = ([...document.scripts].map(s => s.src).find(s => /app\.js/.test(s)) || "").match(/[?&]v=([^&]+)/);
+  $("#app").innerHTML = `<iframe class="jd-frame" data-g="${g}" src="${GAMES[g].file}?embed=1&v=${m ? m[1] : "dev"}" title="${GAMES[g].title}"></iframe>`;
 }
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data || !e.data.jd) return;
-  const f = document.querySelector(".jd-frame");
-  if (e.data.jd === "ready" && f) f.contentWindow.postMessage({ jd: "init", state: S.jangdan || null }, location.origin);
-  else if (e.data.jd === "save" && e.data.state && typeof e.data.state === "object") { S.jangdan = e.data.state; persist(); }
+  const g = GAMES[e.data.g] ? e.data.g : "jangdan";
+  const f = document.querySelector(`.jd-frame[data-g="${g}"]`);
+  if (e.data.jd === "ready" && f) f.contentWindow.postMessage({ jd: "init", g, state: S[g] || null }, location.origin);
+  else if (e.data.jd === "save" && e.data.state && typeof e.data.state === "object") { S[g] = e.data.state; persist(); }
   else if (e.data.jd === "close") location.hash = "";
 });
 
@@ -5191,7 +5196,8 @@ function render() {
     return;
   }
   if (location.hash === "#wrong") { SESSION = null; CRUSH = null; renderWrong(); return; }
-  if (location.hash === "#jangdan") { SESSION = null; renderJangdan(); return; }
+  if (location.hash === "#jangdan") { SESSION = null; renderGame("jangdan"); return; }
+  if (location.hash === "#pyeonseong") { SESSION = null; renderGame("pyeonseong"); return; }
   const m = location.hash.match(/^#q\/([^/]+)(?:\/(weak|heat))?/);
   if (m) renderQuiz(decodeURIComponent(m[1]), m[2] === "weak", m[2] === "heat");
   else { SESSION = null; renderHome(); }

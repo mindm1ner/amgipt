@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>편성 오락실</title>
+<style>
+@font-face{font-family:"87MM일상";src:url("fonts/87MMILSANG-Regular.woff2") format("woff2");font-display:swap}
+@font-face{font-family:"HsSummerWaterLight";src:url("fonts/HSSummer.woff") format("woff");font-display:swap}
+:root{
+  --bg:#f6f5f1;--card:#fff;--ink:#2b2a27;--sub:#8a877f;--faint:#aaa69c;--line:#e7e4dc;--hover:#efece4;
+  --accent:#2b2a27;--accent-soft:#eceae4;--ok:#55705f;--ok-bg:#eaeeeb;--no:#a26056;--no-bg:#f1e9e7;--warn:#97804f;
+  --heat:162,96,86;--shadow:0 1px 2px rgba(0,0,0,.04),0 6px 18px rgba(0,0,0,.05)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#1C1B18;--card:#26231E;--ink:#EDE8DF;--sub:#9C9486;--faint:#7b746a;--line:#37332C;--hover:#2E2B25;
+  --accent:#EDE8DF;--accent-soft:#33302a;--ok:#8fa398;--ok-bg:#262b28;--no:#c29188;--no-bg:#322724;--warn:#b3a077;
+  --heat:194,145,136;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.35);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1C1B18;--card:#26231E;--ink:#EDE8DF;--sub:#9C9486;--faint:#7b746a;--line:#37332C;--hover:#2E2B25;
+  --accent:#EDE8DF;--accent-soft:#33302a;--ok:#8fa398;--ok-bg:#262b28;--no:#c29188;--no-bg:#322724;--warn:#b3a077;
+  --heat:194,145,136;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.35);color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"87MM일상",-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink);
+  line-height:1.6;word-break:keep-all;padding:0 16px 40px;min-height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:720px;margin:0 auto}
+.ico{width:1.1em;height:1.1em;display:inline-block;vertical-align:-.2em}
+header{display:flex;align-items:center;gap:10px;padding:22px 0 14px}
+header h1{font-family:"HsSummerWaterLight","87MM일상",serif;font-weight:normal;font-size:1.7rem;letter-spacing:.06em;flex:1;line-height:1.2}
+.tbtn{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;color:var(--sub);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;white-space:nowrap}
+.tbtn[aria-pressed="true"]{color:var(--ink)}
+h2{font-size:.95rem;color:var(--sub);font-weight:700;margin:18px 0 8px}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px}
+.mode{display:grid;gap:2px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.mode:hover{border-color:var(--ink)}
+.mode.main{grid-column:1/-1;background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mode.main .d,.mode.main .best,.mode.main .best strong{color:var(--bg);opacity:.85}
+.mode.main b{font-size:1.25rem}
+.dacc{height:24px;width:var(--cw,46px);border:0;background:none;font-size:.78rem;color:var(--ink);opacity:.2;padding:0}
+.dacc.on{opacity:1;font-weight:700}.dacc.bad{opacity:1;color:var(--no);text-decoration:underline wavy}
+.cell.cur{box-shadow:inset 0 0 0 3px var(--ink);background:var(--hover)}
+.pal .kk{font-size:.7rem;color:var(--faint);margin-left:2px;font-variant-numeric:tabular-nums}
+.keys{font-size:.78rem;color:var(--sub);text-align:center;margin-top:8px}
+.shake{animation:shake .3s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.cap{font-size:.8rem;color:var(--sub);text-align:center;margin:12px 0 2px}
+.mode b{font-size:1.08rem}
+.mode .d{font-size:.85rem;color:var(--sub)}
+.mode .best{font-size:.8rem;color:var(--sub);font-variant-numeric:tabular-nums;margin-top:6px}
+.mode .best strong{color:var(--ink)}
+.mastery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:6px}
+.ms{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.ms span:last-child{font-variant-numeric:tabular-nums;color:var(--sub);white-space:nowrap}
+.ms.h1{background:rgba(var(--heat),.12)}.ms.h2{background:rgba(var(--heat),.26)}.ms.h3{background:rgba(var(--heat),.42)}
+.ms.good span:last-child{color:var(--ok);font-weight:700}
+/* 플레이 */
+.hud{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:6px 0 10px;font-variant-numeric:tabular-nums}
+.hud .quit{border:0;background:none;color:var(--sub);display:inline-flex;align-items:center;gap:4px;font-size:.9rem}
+.hud .mn{font-weight:700}
+.hud .sp{flex:1}
+.hearts{display:inline-flex;gap:2px;color:var(--no)}
+.hearts .off{color:var(--line)}
+.score{font-weight:700;font-size:1.1rem}
+.combo{font-size:.85rem;font-weight:700;color:var(--bg);background:var(--ink);border-radius:999px;padding:1px 10px;visibility:hidden}
+.combo.on{visibility:visible;animation:pop .25s}
+@keyframes pop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+.timer{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin-bottom:16px}
+.timer i{display:block;height:100%;background:var(--ink);width:100%;transform-origin:left}
+.timer.low i{background:var(--no)}
+.prog{font-size:.85rem;color:var(--sub)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.ask{font-size:1.15rem;font-weight:700;margin-bottom:12px;text-wrap:balance}
+.ask small{display:block;font-size:.85rem;font-weight:400;color:var(--sub)}
+.bw{overflow-x:auto;padding:2px 2px 8px}
+.board{display:grid;width:max-content;margin:0 auto}
+.acc{height:22px;font-size:.78rem;text-align:center;color:var(--ink)}
+.cell{position:relative;width:var(--cw,46px);height:var(--cw,46px);display:grid;place-items:center;background:var(--card);border:0;
+  border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);border-left:1.5px dotted var(--sub);padding:0}
+.cell.bs{border-left:2px solid var(--ink)}.cell.last{border-right:2px solid var(--ink)}
+.cell svg{width:76%;height:76%}
+.cell.hide{background:var(--accent-soft)}
+.cell.hide::after{content:"?";position:absolute;font-weight:700;color:var(--sub)}
+.cell.hide.filled::after{content:none}
+.cell.sel{box-shadow:inset 0 0 0 3px var(--ink)}
+.cell.tap{cursor:pointer}.cell.tap:hover{background:var(--hover)}
+.cell.right{background:var(--ok-bg);box-shadow:inset 0 0 0 3px var(--ok)}
+.cell.wrong{background:var(--no-bg);box-shadow:inset 0 0 0 3px var(--no)}
+.cell.hit{background:var(--accent-soft)}
+.lb{font-size:.72rem;color:var(--sub);text-align:center;padding-top:3px;white-space:nowrap;min-height:1.3em}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;margin-top:14px}
+.opt{display:flex;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-weight:700;text-align:left;min-height:52px}
+.opt:hover{border-color:var(--ink)}
+.opt .k{font-size:.75rem;color:var(--faint);font-variant-numeric:tabular-nums;min-width:1em}
+.opt.right{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
+.opt.wrong{border-color:var(--no);background:var(--no-bg);color:var(--no)}
+.opt:disabled{cursor:default}
+.pal{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;justify-content:center}
+.pal button{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1.5px solid var(--line);border-radius:10px;padding:4px 12px 4px 6px;font-size:.9rem;white-space:nowrap}
+.pal button svg{width:28px;height:28px}
+.pal button:hover{border-color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 18px;font-weight:700;white-space:nowrap}
+.btn.pri{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn:disabled{opacity:.4;cursor:default}
+.play{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin:6px auto 0;background:var(--ink);color:var(--bg);border:0}
+.play svg{width:40px;height:40px}
+.play.beat{animation:beat .12s}
+@keyframes beat{0%{transform:scale(1.08)}100%{transform:scale(1)}}
+.fb{margin-top:14px;text-align:center;font-weight:700;min-height:1.6em}
+.fb.ok{color:var(--ok)}.fb.no{color:var(--no)}
+.fb .sub{display:block;font-weight:400;color:var(--sub);font-size:.85rem}
+.big{font-size:2.6rem;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;line-height:1.1}
+.stats{display:flex;justify-content:center;gap:18px;color:var(--sub);font-size:.9rem;margin:6px 0 4px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.stats b{color:var(--ink)}
+.newbest{text-align:center;font-weight:700;color:var(--warn)}
+.rv{margin-top:12px}
+.rv .t{font-weight:700;margin-bottom:4px}
+.rv .src{font-size:.78rem;color:var(--sub);margin-top:2px}
+.rvitem{border-top:1px solid var(--line);padding:12px 0}
+.mini{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:2px 10px;font-size:.8rem;margin-left:6px;vertical-align:1px}
+@media (max-width:520px){.card{padding:14px 12px}.big{font-size:2.2rem}}
+@media (prefers-reduced-motion:reduce){.combo.on,.play.beat{animation:none}}
+
+.qhd{font-size:.85rem;color:var(--sub)}
+.qbig{font-size:1.35rem;font-weight:700;margin:2px 0 12px;text-wrap:balance}
+form.inp{display:flex;gap:8px;margin-top:10px}
+form.inp input{flex:1;min-width:0;font:inherit;font-size:1.05rem;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+form.inp input:focus{outline:none;border-color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:42px;padding:8px;border:1.5px dashed var(--line);border-radius:12px;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-weight:700}
+.chip .n{font-size:.78rem;color:var(--sub);font-variant-numeric:tabular-nums}
+.chip button{border:0;background:none;color:var(--sub);padding:0 0 0 2px;line-height:1}
+.chip.right{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.chip.wrong{background:var(--no-bg);border-color:var(--no);color:var(--no);text-decoration:line-through}
+.chip.miss{background:none;border:1.5px dashed var(--no);color:var(--no)}
+.chip.opt{border-style:dotted}
+.chip.tap{cursor:pointer}.chip.tap:hover{border-color:var(--ink)}
+.chip.sel{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.hint{font-size:.78rem;color:var(--sub);margin-top:6px}
+.note{font-size:.85rem;color:var(--sub);text-align:center;margin-top:6px}
+.qimg{display:block;max-width:100%;height:auto;background:#fff;border-radius:8px;margin:4px auto 8px}
+.bins{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:8px;margin-top:16px}
+.bin{min-height:64px;font-weight:700;font-size:1.05rem;background:var(--card);border:1.5px solid var(--line);border-radius:12px}
+.bin:hover{border-color:var(--ink)}
+.bin.right{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
+.bin.wrong{border-color:var(--no);background:var(--no-bg);color:var(--no)}
+.drop{font-size:1.8rem;font-weight:700;text-align:center;padding:10px 0 4px}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:.88rem;color:var(--sub);margin-top:10px;cursor:pointer}
+.toggle input{width:18px;height:18px;accent-color:var(--ink)}
+.weak{display:flex;flex-wrap:wrap;gap:6px}
+.weak span{font-size:.85rem;background:rgba(var(--heat),.18);border-radius:8px;padding:4px 10px}
+.weak span b{font-variant-numeric:tabular-nums;margin-left:4px}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script id="data" type="application/json">{"ens": [{"id": "daechwita", "q": "대취타", "src": "기초 3 30쪽", "items": [["나발", [], 1], ["나각", [], 1], ["태평소", [], 1], ["용고", [], 1], ["자바라", ["바라"], 1], ["징", [], 1]], "traps": ["아쟁", "팀파니", "해금", "대금", "장구"], "note": "현악기 없음. 가락은 태평소만"}, {"id": "chwita", "q": "취타(관현 합주)", "src": "심화 6 59쪽", "items": [["가야금", [], 1], ["거문고", [], 1], ["아쟁", [], 1], ["해금", [], 1], ["대금", [], 1], ["향피리", [], 1], ["소금", [], 1], ["장구", [], 1], ["좌고", [], 1], ["박", [], 1]], "traps": ["나발", "나각", "태평소", "징"], "note": "관악기 중심 = 만파정식지곡, 현악기 중심 = 수요남극지곡"}, {"id": "samhyeon", "q": "삼현육각", "src": "기초 3 34·38쪽", "items": [["향피리", [], 2], ["대금", [], 1], ["해금", [], 1], ["장구", [], 1], ["좌고", ["북"], 1]], "traps": ["세피리", "가야금", "거문고", "아쟁"], "note": "가락 악기 셋(삼현), 연주자 여섯(육각). 수제천·무동·봉산탈춤"}, {"id": "julpungryu", "q": "줄풍류(현악 영산회상·천년만세)", "src": "기초 3 37·38쪽", "items": [["거문고", [], 1], ["가야금", [], 1], ["해금", [], 1], ["대금", [], 1], ["세피리", [], 1], ["장구", [], 1]], "opt": ["단소", "양금"], "traps": ["향피리", "좌고", "태평소"], "note": "세피리. 장구는 변죽. 단소·양금은 더해도 됨"}, {"id": "daepungryu", "q": "대풍류(관악 영산회상)", "src": "기초 3 37쪽", "items": [["향피리", [], 1], ["대금", [], 1], ["해금", [], 1], ["장구", [], 1], ["좌고", ["북"], 1]], "opt": ["소금", "아쟁"], "traps": ["세피리", "거문고", "가야금"], "note": "삼현육각과 편성 같음. 소금·아쟁은 더해도 됨"}, {"id": "sinawi", "q": "시나위", "src": "심화 6 59쪽", "items": [["거문고", [], 1], ["대금", [], 1], ["아쟁", [], 1], ["해금", [], 1], ["피리", ["향피리"], 1], ["가야금", [], 1], ["징", [], 1], ["장구", [], 1]], "traps": ["태평소", "나발", "좌고"], "note": "장구와 징은 반주"}, {"id": "samul", "q": "사물놀이", "src": "기초 3 39~40쪽", "items": [["꽹과리", [], 1], ["장구", [], 1], ["북", [], 1], ["징", [], 1]], "traps": ["소고", "태평소", "자바라"], "note": "천둥·번개 꽹과리 · 비 장구 · 구름 북 · 바람 징"}, {"id": "pungmul", "q": "풍물놀이", "src": "기초 3 39쪽", "items": [["꽹과리", [], 1], ["장구", [], 1], ["북", [], 1], ["징", [], 1], ["소고", [], 1], ["태평소", [], 1]], "traps": ["해금", "아쟁", "나발"], "note": "사물 + 소고·태평소"}, {"id": "sq4", "q": "현악 4중주(하이든 「종달새」)", "src": "심화 3 37쪽", "items": [["바이올린", [], 2], ["비올라", [], 1], ["첼로", [], 1]], "traps": ["콘트라베이스", "피아노", "하프"], "note": "두 대의 바이올린·비올라·첼로"}, {"id": "nachtmusik", "q": "모차르트 「작은 밤의 음악」", "src": "심화 6 55쪽", "items": [["바이올린", [], 2], ["비올라", [], 1], ["첼로", [], 1], ["콘트라베이스", ["더블베이스"], 1]], "traps": ["피아노", "하프", "플루트"], "note": "현악 4중주 + 콘트라베이스"}, {"id": "pq5", "q": "일반적인 피아노 5중주", "src": "심화 6 61쪽", "items": [["피아노", [], 1], ["바이올린", [], 2], ["비올라", [], 1], ["첼로", [], 1]], "traps": ["콘트라베이스", "하프", "클라리넷"], "note": "피아노·제1바이올린·제2바이올린·비올라·첼로"}, {"id": "trout", "q": "슈베르트 피아노 5중주 '송어'", "src": "심화 6 61쪽 · 2021-A 6", "items": [["피아노", [], 1], ["바이올린", [], 1], ["비올라", [], 1], ["첼로", [], 1], ["콘트라베이스", ["더블베이스"], 1]], "traps": ["제2바이올린", "하프", "클라리넷"], "note": "제2바이올린 대신 콘트라베이스"}, {"id": "lion", "q": "「동물의 사육제」 서주와 사자 왕의 행진", "src": "심화 1 4쪽", "items": [["피아노", [], 2], ["바이올린", [], 2], ["비올라", [], 1], ["첼로", [], 1], ["콘트라베이스", ["더블베이스"], 1]], "traps": ["플루트", "하프", "트럼펫"], "note": "두 대의 피아노와 현악 5부"}, {"id": "swan", "q": "「동물의 사육제」 백조", "src": "심화 1 5쪽", "items": [["첼로", [], 1], ["피아노", [], 2]], "traps": ["바이올린", "하프", "플루트"], "note": "첼로와 두 대의 피아노"}, {"id": "donkey", "q": "「동물의 사육제」 당나귀·캥거루", "src": "심화 1 4쪽", "items": [["피아노", [], 2]], "traps": [], "note": "두 대의 피아노(로만)"}, {"id": "aquarium", "q": "「동물의 사육제」 수족관", "src": "심화 1 4쪽", "items": [["피아노", [], 1], ["플루트", [], 1], ["바이올린", [], 1]], "traps": ["첼로", "하프", "오보에"], "note": "피아노·플루트·바이올린 등"}, {"id": "pt3", "q": "피아노 3중주", "src": "교재 밖", "out": true, "items": [["피아노", [], 1], ["바이올린", [], 1], ["첼로", [], 1]], "traps": ["비올라", "콘트라베이스"], "note": ""}, {"id": "ww5", "q": "목관 5중주", "src": "교재 밖", "out": true, "items": [["플루트", [], 1], ["오보에", [], 1], ["클라리넷", [], 1], ["바순", [], 1], ["호른", [], 1]], "traps": ["트럼펫", "색소폰"], "note": "금관인 호른이 들어감"}, {"id": "br5", "q": "금관 5중주", "src": "교재 밖", "out": true, "items": [["트럼펫", [], 2], ["호른", [], 1], ["트롬본", [], 1], ["튜바", [], 1]], "traps": ["바순", "클라리넷"], "note": ""}], "scores": [{"img": "pw_peter.png", "q": "피터와 늑대 · 피터", "ans": [["현악기", "바이올린"]]}, {"img": "pw_bird.png", "q": "피터와 늑대 · 새", "ans": [["플루트"]]}, {"img": "pw_duck.png", "q": "피터와 늑대 · 오리", "ans": [["오보에"]]}, {"img": "pw_cat.png", "q": "피터와 늑대 · 고양이", "ans": [["클라리넷"]]}, {"img": "pw_grand.png", "q": "피터와 늑대 · 할아버지", "ans": [["바순"]]}, {"img": "pw_wolf.png", "q": "피터와 늑대 · 늑대", "ans": [["호른"]]}, {"img": "pw_hunter.png", "q": "피터와 늑대 · 사냥꾼", "ans": [["팀파니"], ["큰북"]]}, {"img": "wt_dawn.png", "q": "빌헬름 텔 서곡 · 새벽", "ans": [["첼로"]]}, {"img": "wt_march.png", "q": "빌헬름 텔 서곡 · 스위스 군대의 행진", "ans": [["트럼펫"]]}, {"img": "trumpet.png", "q": "협주곡 3악장 주제 · 독주 악기", "ans": [["트럼펫"]]}, {"img": "cello.png", "q": "무반주 모음곡 1번 프렐류드 · 독주 악기", "ans": [["첼로"]]}, {"img": "fate1.png", "q": "운명 교향곡 1악장 제1주제", "ans": [["현악기"], ["클라리넷"]]}, {"img": "fate2.png", "q": "운명 교향곡 1악장 제2주제(순서대로 셋)", "ans": [["현악기"], ["클라리넷"], ["플루트"]]}, {"img": "sa_donkey.png", "q": "동물의 사육제 · 당나귀", "ans": [["피아노"]]}], "facts": [{"q": "오케스트라에서 음정을 맞출 때 기준이 되는 악기", "ans": [["오보에"]], "src": "심화 3 36쪽"}, {"q": "목관 악기 중 가장 낮은 악기", "ans": [["바순"]], "src": "심화 3 36쪽"}, {"q": "금관 악기 중 가장 높은 음역", "ans": [["트럼펫"]], "src": "심화 3 36쪽"}, {"q": "금관 악기 중 가장 낮은 음역", "ans": [["튜바"]], "src": "심화 3 36쪽"}, {"q": "비올라보다 한 옥타브 낮은 음역대", "ans": [["첼로"]], "src": "심화 3 37쪽"}, {"q": "국악 관악기 중 최고 음역", "ans": [["소금"]], "src": "심화 3 36쪽"}, {"q": "국악기 중 음량이 가장 큰 관악기", "ans": [["태평소"]], "src": "심화 3 36쪽"}, {"q": "국악 관악기 중 유일하게 화음을 연주", "ans": [["생황"]], "src": "심화 3 36쪽"}, {"q": "국악 관악기 중 유일하게 금속, 단일음", "ans": [["나발"]], "src": "심화 3 36쪽"}, {"q": "단일음, 소리가 부드럽고 웅장(토부)", "ans": [["나각"]], "src": "심화 3 36쪽"}, {"q": "홑리드 악기", "ans": [["클라리넷"]], "src": "심화 3 37쪽"}, {"q": "겹리드 악기 둘", "ans": [["오보에"], ["바순"]], "src": "심화 3 37쪽"}, {"q": "줄을 채로 쳐서 소리 내는 타현 악기", "ans": [["양금"]], "src": "심화 3 37쪽"}, {"q": "가로로 연주하는 관악기 셋", "ans": [["대금"], ["소금"], ["플루트"]], "src": "심화 3 36쪽"}, {"q": "사물 소리: 천둥·번개", "ans": [["꽹과리"]], "src": "기초 3 40쪽"}, {"q": "사물 소리: 비", "ans": [["장구"]], "src": "기초 3 40쪽"}, {"q": "사물 소리: 구름", "ans": [["북"]], "src": "기초 3 40쪽"}, {"q": "사물 소리: 바람", "ans": [["징"]], "src": "기초 3 40쪽"}, {"q": "대취타에서 가락을 연주하는 유일한 악기", "ans": [["태평소"]], "src": "기초 3 30쪽"}, {"q": "별사탕 요정의 춤에 처음 쓰인 악기", "ans": [["첼레스타"]], "src": "심화 1 14쪽"}, {"q": "꽃의 왈츠 주제(4개)와 이어지는 카덴차", "ans": [["호른"], ["하프"]], "src": "심화 1 14쪽"}, {"q": "사계 봄 2악장, 개 짖는 소리", "ans": [["비올라"]], "src": "심화 2 24쪽"}, {"q": "사계의 독주 악기(바이올린 협주곡)", "ans": [["바이올린"]], "src": "심화 2 23쪽"}, {"q": "페르 귄트 아침의 기분 주제 가락 둘", "ans": [["플루트"], ["오보에"]], "src": "심화 2 24쪽"}, {"q": "산왕의 궁전에서: 음산하게 울리는 악기, 현을 퉁기는 악기", "ans": [["호른"], ["첼로"]], "src": "심화 2 24쪽"}, {"q": "빌헬름 텔 서곡 고요함", "ans": [["잉글리시호른", "잉글리시 호른", "잉글리쉬호른"]], "src": "심화 4 42쪽"}, {"q": "시나위에서 반주를 맡는 두 악기", "ans": [["장구"], ["징"]], "src": "심화 6 59쪽"}, {"q": "청성곡을 연주하는 악기 둘(하나씩 따로)", "ans": [["대금"], ["단소"]], "src": "심화 6 55쪽"}, {"q": "줄풍류에 쓰는 피리", "ans": [["세피리"]], "src": "기초 3 37쪽"}, {"q": "꽹과리 연주자 중 우두머리", "ans": [["상쇠"]], "src": "기초 3 40쪽"}], "sorts": [{"name": "국악기: 관 · 현 · 타", "bins": ["관악기", "현악기", "타악기"], "map": {"단소": "관악기", "소금": "관악기", "대금": "관악기", "향피리": "관악기", "세피리": "관악기", "태평소": "관악기", "생황": "관악기", "나발": "관악기", "나각": "관악기", "훈": "관악기", "가야금": "현악기", "거문고": "현악기", "아쟁": "현악기", "해금": "현악기", "양금": "현악기", "장구": "타악기", "북": "타악기", "좌고": "타악기", "용고": "타악기", "꽹과리": "타악기", "징": "타악기", "소고": "타악기", "자바라": "타악기", "박": "타악기"}}, {"name": "풍물 악기: 부는 · 때리는", "bins": ["부는 악기", "때리는 악기"], "map": {"태평소": "부는 악기", "꽹과리": "때리는 악기", "장구": "때리는 악기", "북": "때리는 악기", "징": "때리는 악기", "소고": "때리는 악기"}}, {"name": "목관 ↔ 금관", "bins": ["목관", "금관"], "map": {"플루트": "목관", "오보에": "목관", "클라리넷": "목관", "바순": "목관", "호른": "금관", "트럼펫": "금관", "트롬본": "금관", "튜바": "금관"}}, {"name": "현악기 소리 내는 법", "bins": ["발현", "찰현", "타현"], "map": {"가야금": "발현", "거문고": "발현", "기타": "발현", "하프": "발현", "해금": "찰현", "아쟁": "찰현", "바이올린": "찰현", "비올라": "찰현", "첼로": "찰현", "더블베이스": "찰현", "양금": "타현"}}, {"name": "국악 관악기 재료", "bins": ["금부", "죽부", "포부", "토부"], "map": {"나발": "금부", "대금": "죽부", "소금": "죽부", "단소": "죽부", "향피리": "죽부", "태평소": "죽부", "생황": "포부", "훈": "토부", "나각": "토부"}}, {"name": "관악기 소리 내는 법", "bins": ["입김", "입술", "리드"], "map": {"훈": "입김", "단소": "입김", "대금": "입김", "플루트": "입김", "나각": "입술", "나발": "입술", "호른": "입술", "트롬본": "입술", "튜바": "입술", "트럼펫": "입술", "태평소": "리드", "향피리": "리드", "생황": "리드", "오보에": "리드", "바순": "리드", "클라리넷": "리드"}}, {"name": "풍물 악기 재료", "bins": ["쇠", "가죽과 나무", "쇠와 나무"], "map": {"꽹과리": "쇠", "징": "쇠", "장구": "가죽과 나무", "북": "가죽과 나무", "소고": "가죽과 나무", "태평소": "쇠와 나무"}}, {"name": "연주 방향", "bins": ["가로", "세로"], "map": {"대금": "가로", "소금": "가로", "플루트": "가로", "단소": "세로", "향피리": "세로", "나발": "세로", "생황": "세로", "태평소": "세로", "오보에": "세로", "클라리넷": "세로", "바순": "세로", "트럼펫": "세로"}}]}</script>
+<script>
+const DATA=JSON.parse(document.getElementById('data').textContent);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const I={
+ heart:'<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.5.7-1.3 2.2-2.5 4.3-2.5 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>',
+ back:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+ snd:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+ mute:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>',
+ moon:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+ sun:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+ redo:'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>'
+};
+const MODES=[
+ {id:'build',t:'편성 짜기',d:'곡·편성 이름 → 악기를 모두 쓰기',main:true},
+ {id:'fix',t:'틀린 악기 고치기',d:'끼어든 악기를 찾아 바르게 쓰기'},
+ {id:'score',t:'악보 → 악기',d:'악기 이름을 가린 교재 악보'},
+ {id:'fact',t:'한 줄 쓰기',d:'가장 ~ · 사물 소리 · 짚은 악기'},
+ {id:'sort',t:'분류 레이스',d:'칸을 눌러 빠르게 가르기'}
+];
+const ROUND=10,LIVES=3;
+
+// ── 기록 ──
+const G_ID='pyeonseong',SK='pyeonseong-game-v1';
+const EMB=/[?&]embed=1/.test(location.search)&&window.parent!==window;
+let S={best:{},items:{},out:false};
+if(!EMB){try{S=Object.assign(S,JSON.parse(localStorage.getItem(SK)||'{}'))}catch(e){}}
+const save=()=>{if(EMB){try{parent.postMessage({jd:'save',g:G_ID,state:S},location.origin)}catch(e){}}else{try{localStorage.setItem(SK,JSON.stringify(S))}catch(e){}}};
+if(EMB){addEventListener('message',e=>{if(e.origin!==location.origin||!e.data||e.data.jd!=='init'||(e.data.g||G_ID)!==G_ID)return;
+  S=Object.assign({best:{},items:{},out:false},e.data.state||{});if(!G)home()});
+  try{parent.postMessage({jd:'ready',g:G_ID},location.origin)}catch(e){}}
+function rec(key,ok,label){const r=S.items[key]||(S.items[key]={n:0,w:0});r.n++;if(!ok)r.w++;r.t=Date.now();if(label)r.l=label;save()}
+
+let snd=true;try{snd=localStorage.getItem(SK+'-snd')!=='0'}catch(e){}
+const R=document.documentElement;
+if(!EMB){try{const th=localStorage.getItem('gap-theme');if(th)R.dataset.theme=th}catch(e){}}
+const isDark=()=>R.dataset.theme?R.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+let AC=null;
+function sfx(ok){if(!snd)return;try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();
+  const a=AC,t=a.currentTime+.01,o=a.createOscillator(),g=a.createGain();
+  if(ok){o.type='sine';o.frequency.setValueAtTime(660,t);o.frequency.setValueAtTime(990,t+.08)}else{o.type='square';o.frequency.setValueAtTime(180,t);o.frequency.exponentialRampToValueAtTime(110,t+.2)}
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(ok?.18:.08,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+.25);o.connect(g).connect(a.destination);o.start(t);o.stop(t+.3)}catch(e){}}
+
+// ── 쓴 말 다듬기: 띄어쓰기·기호 빼고, 끝의 숫자는 수량. 제1·제2는 떼고 셈 ──
+function parse(raw){let s=String(raw).trim().replace(/[×x*]\s*(\d+)\s*$/i,' $1').replace(/(\d+)\s*(대|개|명)\s*$/,'$1');
+  let n=1;const m=s.match(/^(.*?)[\s]*(\d+)$/);if(m&&m[1]){s=m[1];n=Math.max(1,Math.min(9,+m[2]))}
+  return {name:s.trim(),n}}
+const norm=s=>String(s).replace(/[\s·.,()（）'"]/g,'').replace(/^제[12]/,'').toLowerCase();
+function same(a,b){return norm(a)===norm(b)}
+const names=g=>[g[0]].concat(g[1]||[]);
+
+// ── 출제 ──
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const r=Math.random()*(i+1)|0;[a[i],a[r]]=[a[r],a[i]]}return a};
+function weight(k){const r=S.items[k];return 1+(r?r.w*2-Math.min(r.n-r.w,3)*.2:1)}
+function pick(pool,keyOf,k){const out=[],p=pool.slice();while(out.length<k&&p.length){const ws=p.map(x=>Math.max(.2,weight(keyOf(x)))),tot=ws.reduce((a,b)=>a+b,0);
+  let r=Math.random()*tot,i=0;while(r>ws[i]){r-=ws[i];i++}out.push(p.splice(Math.min(i,p.length-1),1)[0])}return shuffle(out)}
+const ensPool=()=>DATA.ens.filter(e=>S.out||!e.out);
+function build(mode,only){
+  let pool,keyOf,mk;
+  if(mode==='build'){pool=ensPool();keyOf=e=>'ens:'+e.id+':build';mk=e=>({key:keyOf(e),label:e.q,e,sec:Math.round(12+e.items.reduce((a,x)=>a+x[2],0)*5)})}
+  if(mode==='fix'){pool=ensPool().filter(e=>e.traps.length&&e.items.some(x=>x[2]===1));keyOf=e=>'ens:'+e.id+':fix';
+    mk=e=>{const cand=e.items.filter(x=>x[2]===1),rm=cand[Math.random()*cand.length|0],trap=e.traps[Math.random()*e.traps.length|0];
+      const list=shuffle(e.items.filter(x=>x!==rm).map(x=>({t:x[0],n:x[2]})).concat([{t:trap,n:1,trap:1}]));
+      return {key:keyOf(e),label:e.q,e,rm,trap,list,sec:25}}}
+  if(mode==='score'){pool=DATA.scores;keyOf=s=>'score:'+s.img;mk=s=>({key:keyOf(s),label:s.q,s,ans:s.ans,sec:15+s.ans.length*6})}
+  if(mode==='fact'){pool=DATA.facts;keyOf=f=>'fact:'+f.q;mk=f=>({key:keyOf(f),label:f.q,f,ans:f.ans,sec:12+f.ans.length*6})}
+  if(mode==='sort'){pool=[];DATA.sorts.forEach(s=>Object.entries(s.map).forEach(([k,v])=>pool.push({s,inst:k,bin:v})));keyOf=x=>'sort:'+x.s.name+':'+x.inst;
+    mk=x=>({key:keyOf(x),label:x.inst+' → '+x.s.name,x,sec:7})}
+  const src=only?pool.filter(x=>only.includes(keyOf(x))):pick(pool,keyOf,mode==='sort'?15:ROUND);
+  return src.map(mk)}
+
+// ── 화면 ──
+let G=null,timerId=null;
+function home(){clearInterval(timerId);G=null;
+  let h='<header>'+(EMB?'<button class="tbtn" id="bkapp">'+I.back+'암기PT</button>':'')+'<h1>편성 오락실</h1><button class="tbtn" id="sndb" aria-pressed="'+snd+'">'+(snd?I.snd:I.mute)+'소리</button>'+(EMB?'':'<button class="tbtn" id="thb">'+(isDark()?I.sun+'밝게':I.moon+'어둡게')+'</button>')+'</header>';
+  h+='<h2>게임</h2><div class="modes">'+MODES.map(m=>'<button class="mode'+(m.main?' main':'')+'" data-m="'+m.id+'"><b>'+m.t+'</b><span class="d">'+m.d+'</span><span class="best">최고 <strong>'+(S.best[m.id]||0)+'</strong></span></button>').join('')+'</div>';
+  h+='<label class="toggle"><input type="checkbox" id="outb"'+(S.out?' checked':'')+'>교재 밖 편성 섞기(피아노 3중주·목관 5중주·금관 5중주)</label>';
+  const weak=Object.entries(S.items).filter(([k,v])=>v.w>0).sort((a,b)=>b[1].w-a[1].w||b[1].t-a[1].t).slice(0,12);
+  if(weak.length)h+='<h2>자주 틀린 것</h2><div class="weak">'+weak.map(([k,v])=>'<span>'+esc(v.l||k)+'<b>'+v.w+'</b></span>').join('')+'</div>';
+  $('#app').innerHTML=h;
+  document.querySelectorAll('.mode').forEach(b=>b.onclick=()=>start(b.dataset.m));
+  $('#outb').onchange=e=>{S.out=e.target.checked;save()};
+  $('#sndb').onclick=()=>{snd=!snd;try{localStorage.setItem(SK+'-snd',snd?'1':'0')}catch(e){}home()};
+  if($('#bkapp'))$('#bkapp').onclick=()=>{try{parent.postMessage({jd:'close',g:G_ID},location.origin)}catch(e){}};
+  if($('#thb'))$('#thb').onclick=()=>{const n=isDark()?'light':'dark';R.dataset.theme=n;try{localStorage.setItem('gap-theme',n)}catch(e){}home()};
+}
+function start(mode,only){const qs=build(mode,only);if(!qs.length)return home();
+  G={mode,m:MODES.find(m=>m.id===mode),qs,i:0,score:0,combo:0,maxc:0,lives:LIVES,right:0,wrong:[]};next()}
+function hud(){const g=G;return '<div class="hud"><button class="quit" id="quit">'+I.back+'그만</button><span class="mn">'+g.m.t+'</span><span class="prog">'+(g.i+1)+' / '+g.qs.length+'</span><span class="sp"></span>'
+  +'<span class="hearts" aria-label="목숨 '+g.lives+'">'+Array.from({length:LIVES},(_,k)=>'<span class="'+(k<g.lives?'':'off')+'">'+I.heart+'</span>').join('')+'</span>'
+  +'<span class="combo'+(g.combo>=2?' on':'')+'">콤보 '+g.combo+'</span><span class="score">'+g.score+'</span></div><div class="timer" id="tm"><i></i></div>'}
+function frame(body){$('#app').innerHTML='<div style="padding-top:14px">'+hud()+'<div class="card" id="cd">'+body+'<div class="fb" id="fb" aria-live="polite"></div><div id="after"></div></div></div>';$('#quit').onclick=home}
+function next(){clearInterval(timerId);
+  if(G.i>=G.qs.length||G.lives<=0)return result();
+  const q=G.qs[G.i];q.answered=false;q.chips=[];
+  const m=G.mode;
+  if(m==='build'){frame('<div class="qhd">편성 악기를 모두</div><div class="qbig">'+esc(q.e.q)+'</div>'+chipBox()+inp('악기 이름 · Enter (향피리 2 = 두 대)')+'<div class="row"><button class="btn pri" id="sub">제출</button></div>');wireChips()}
+  if(m==='score'){frame('<div class="qhd">'+esc(q.s.q)+'</div><img class="qimg" src="img-ps/'+q.s.img+'" alt="악보">'+(q.ans.length>1?chipBox():'')+inp(q.ans.length>1?'악기 '+q.ans.length+'개 · 하나씩 Enter':'악기 이름 · Enter')+(q.ans.length>1?'<div class="row"><button class="btn pri" id="sub">제출</button></div>':''));wireChips()}
+  if(m==='fact'){frame('<div class="qbig">'+esc(q.f.q)+'</div>'+(q.ans.length>1?chipBox():'')+inp(q.ans.length>1?q.ans.length+'개 · 하나씩 Enter':'Enter')+(q.ans.length>1?'<div class="row"><button class="btn pri" id="sub">제출</button></div>':''));wireChips()}
+  if(m==='fix'){q.sel=null;frame('<div class="qhd">끼어든 악기 하나를 누르고, 원래 악기를 쓰기</div><div class="qbig">'+esc(q.e.q)+'</div><div class="chips" id="fl">'+q.list.map((x,i)=>'<span class="chip tap" data-i="'+i+'">'+esc(x.t)+(x.n>1?'<span class="n">×'+x.n+'</span>':'')+'</span>').join('')+'</div>'+inp('원래 있어야 할 악기 · Enter'));
+    document.querySelectorAll('#fl .chip').forEach(c=>c.onclick=()=>{if(q.answered)return;q.sel=+c.dataset.i;document.querySelectorAll('#fl .chip').forEach(x=>x.classList.toggle('sel',x===c));$('#in').focus()});
+    $('#fm').onsubmit=e=>{e.preventDefault();if(q.answered)return;const v=$('#in').value.trim();if(q.sel===null){shake();return}if(!v)return;q.typed=v;submit(false)}}
+  if(m==='sort'){const x=q.x;frame('<div class="qhd">'+esc(x.s.name)+'</div><div class="drop">'+esc(x.inst)+'</div><div class="bins">'+x.s.bins.map((b,i)=>'<button class="bin" data-b="'+esc(b)+'">'+esc(b)+'<span class="k" style="display:block;font-size:.7rem;color:var(--faint)">'+(i+1)+'</span></button>').join('')+'</div>');
+    document.querySelectorAll('.bin').forEach(b=>b.onclick=()=>{q.pickB=b.dataset.b;submit(false)})}
+  startTimer();const f=$('#in');if(f)f.focus()}
+const chipBox=()=>'<div class="chips" id="ch"></div>';
+const inp=ph=>'<form class="inp" id="fm" autocomplete="off"><input id="in" type="text" placeholder="'+ph+'" autocapitalize="off" spellcheck="false" enterkeyhint="enter"><button class="btn" type="submit">넣기</button></form>';
+function drawChips(){const c=$('#ch');if(!c)return;const q=G.qs[G.i];
+  c.innerHTML=q.chips.map((x,i)=>'<span class="chip">'+esc(x.name)+(x.n>1?'<span class="n">×'+x.n+'</span>':'')+'<button type="button" data-i="'+i+'" aria-label="빼기">×</button></span>').join('');
+  c.querySelectorAll('button').forEach(b=>b.onclick=()=>{q.chips.splice(+b.dataset.i,1);drawChips();$('#in').focus()})}
+function wireChips(){const q=G.qs[G.i],single=(G.mode==='score'||G.mode==='fact')&&q.ans.length===1;
+  $('#fm').onsubmit=e=>{e.preventDefault();if(q.answered)return;const raw=$('#in').value.trim();
+    if(!raw){if(q.chips.length)submit(false);return}
+    if(single){q.chips=[parse(raw)];submit(false);return}
+    raw.split(/[,，、]/).map(s=>s.trim()).filter(Boolean).forEach(r=>{const p=parse(r);const ex=q.chips.find(c=>same(c.name,p.name));if(ex)ex.n+=p.n;else q.chips.push(p)});
+    $('#in').value='';drawChips()};
+  const sb=$('#sub');if(sb)sb.onclick=()=>{const raw=$('#in').value.trim();if(raw){$('#fm').requestSubmit?$('#fm').requestSubmit():$('#fm').onsubmit(new Event('submit'))}submit(false)}}
+function shake(){const c=$('#cd');c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake')}
+function startTimer(){const q=G.qs[G.i];q.t0=Date.now();const bar=$('#tm i'),tm=$('#tm');
+  timerId=setInterval(()=>{const left=Math.max(0,1-(Date.now()-q.t0)/1000/q.sec);if(bar)bar.style.transform='scaleX('+left+')';if(tm)tm.classList.toggle('low',left<.3);
+    if(left<=0){clearInterval(timerId);if(G.mode==='fix'&&$('#in')&&$('#in').value.trim())q.typed=$('#in').value.trim();submit(true)}},100)}
+// 정답 묶음(이름·다른 이름·수)과 쓴 칩 대조
+function grade(groups,opt,chips){const used=chips.map(()=>0),res=groups.map(g=>{let got=0;chips.forEach((c,i)=>{if(names(g).some(nm=>same(nm,c.name))){got+=c.n;used[i]=1}});return {g,got}});
+  const optUsed=chips.map((c,i)=>!used[i]&&(opt||[]).some(o=>same(o,c.name)));
+  const extra=chips.filter((c,i)=>!used[i]&&!optUsed[i]);
+  const ok=res.every(r=>r.got===r.g[2])&&!extra.length;
+  return {ok,res,extra,chips:chips.map((c,i)=>({c,st:used[i]?(res.find(r=>names(r.g).some(nm=>same(nm,c.name))).got===res.find(r=>names(r.g).some(nm=>same(nm,c.name))).g[2]?'right':'wrong'):optUsed[i]?'opt':'wrong'}))}}
+function submit(timeout){const q=G.qs[G.i];if(q.answered)return;q.answered=true;clearInterval(timerId);
+  const m=G.mode;let ok=false,show='';
+  if(m==='build'||m==='score'||m==='fact'){
+    const groups=m==='build'?q.e.items:q.ans.map(a=>[a[0],a.slice(1),1]);
+    const r=grade(groups,m==='build'?q.e.opt:null,q.chips);ok=r.ok&&!(timeout&&!q.chips.length);
+    show='<div class="cap">내가 쓴 것</div><div class="chips">'+(r.chips.length?r.chips.map(x=>'<span class="chip '+x.st+'">'+esc(x.c.name)+(x.c.n>1?'<span class="n">×'+x.c.n+'</span>':'')+'</span>').join(''):'<span class="hint">없음</span>')+'</div>'
+      +'<div class="cap">정답</div><div class="chips">'+r.res.map(x=>'<span class="chip '+(x.got===x.g[2]?'right':'miss')+'">'+esc(x.g[0])+(x.g[2]>1?'<span class="n">×'+x.g[2]+'</span>':'')+'</span>').join('')
+      +(m==='build'&&q.e.opt?q.e.opt.map(o=>'<span class="chip opt">'+esc(o)+'</span>').join(''):'')+'</div>'
+      +(m==='build'?'<div class="note">'+esc(q.e.note)+(q.e.note?' · ':'')+esc(q.e.src)+'</div>':m==='fact'?'<div class="note">'+esc(q.f.src)+'</div>':'')}
+  if(m==='fix'){const pickT=q.sel!==null?q.list[q.sel]:null;const okPick=!!(pickT&&pickT.trap),okType=!!(q.typed&&names(q.rm).some(nm=>same(nm,parse(q.typed).name)));
+    ok=okPick&&okType&&!timeout;
+    show='<div class="chips">'+q.list.map((x,i)=>'<span class="chip '+(x.trap?'wrong':(i===q.sel?'sel':''))+'">'+esc(x.t)+(x.n>1?'<span class="n">×'+x.n+'</span>':'')+'</span>').join('')+'<span class="chip right">'+esc(q.rm[0])+'</span></div>'
+      +'<div class="note">'+esc(q.trap)+' → '+esc(q.rm[0])+' · 내 답: '+esc(pickT?pickT.t:'고르지 않음')+' → '+esc(q.typed||'안 씀')+'</div><div class="note">'+esc(q.e.note)+' · '+esc(q.e.src)+'</div>'}
+  if(m==='sort'){ok=!timeout&&q.pickB===q.x.bin;document.querySelectorAll('.bin').forEach(b=>{b.disabled=true;if(b.dataset.b===q.x.bin)b.classList.add('right');else if(b.dataset.b===q.pickB)b.classList.add('wrong')})}
+  const left=Math.max(0,1-(Date.now()-q.t0)/1000/q.sec);
+  if(ok){G.combo++;G.maxc=Math.max(G.maxc,G.combo);G.right++;G.score+=Math.round((100+left*100)*Math.min(2,1+.1*(G.combo-1)))}
+  else{G.combo=0;G.lives--;G.wrong.push(q)}
+  rec(q.key,ok,q.label);sfx(ok);
+  const f=$('#fm');if(f)f.remove();const sb=$('#sub');if(sb)sb.parentNode.remove();
+  if(m!=='sort'){const ch=$('#ch');if(ch)ch.remove();const fl=$('#fl');if(fl)fl.remove()}
+  const fb=$('#fb');fb.className='fb '+(ok?'ok':'no');fb.innerHTML=ok?'정답':(timeout?'시간 끝':'오답');
+  $('#after').innerHTML=show+'<div class="row"><button class="btn pri" id="nx">'+(G.i+1>=G.qs.length||G.lives<=0?'결과':'다음')+'</button></div>';
+  $('#nx').onclick=()=>{G.i++;next()};$('#nx').focus();
+  const hd=document.querySelector('.hud');if(hd){const t=document.createElement('div');t.innerHTML=hud();hd.replaceWith(t.firstChild);$('#quit').onclick=home;$('#tm i').style.transform='scaleX(0)'}}
+function result(){clearInterval(timerId);const g=G,m=g.m;const prev=S.best[m.id]||0,nb=g.score>prev;if(nb){S.best[m.id]=g.score;save()}
+  let h='<div style="padding-top:28px"><div class="card"><div class="ask" style="text-align:center">'+m.t+(g.lives<=0?' · 목숨 끝':'')+'</div><div class="big">'+g.score+'</div>'
+   +(nb?'<div class="newbest">최고 기록</div>':'')+'<div class="stats"><span>맞힘 <b>'+g.right+'</b> / '+(g.right+g.wrong.length)+'</span><span>최대 콤보 <b>'+g.maxc+'</b></span><span>최고 <b>'+(S.best[m.id]||0)+'</b></span></div>'
+   +'<div class="row"><button class="btn pri" id="again">'+I.redo+'한 판 더</button>'+(g.wrong.length?'<button class="btn" id="wr">틀린 것만 '+g.wrong.length+'</button>':'')+'<button class="btn" id="hm">처음으로</button></div>';
+  if(g.wrong.length)h+='<div class="rv">'+g.wrong.map(q=>'<div class="rvitem"><div class="t">'+esc(q.label)+'</div><div class="src">'+esc(answerText(q))+'</div></div>').join('')+'</div>';
+  $('#app').innerHTML=h+'</div></div>';
+  $('#again').onclick=()=>start(m.id);$('#hm').onclick=home;if($('#wr'))$('#wr').onclick=()=>start(m.id,g.wrong.map(q=>q.key))}
+function answerText(q){if(q.e&&G.mode==='build')return q.e.items.map(x=>x[0]+(x[2]>1?' ×'+x[2]:'')).join(' · ')+(q.e.opt?' (+'+q.e.opt.join('·')+')':'');
+  if(q.e)return q.trap+' → '+q.rm[0];if(q.ans)return q.ans.map(a=>a[0]).join(' · ');if(q.x)return q.x.inst+' = '+q.x.bin;return ''}
+document.addEventListener('keydown',e=>{if(!G)return;
+  if(G.mode==='sort'&&!G.qs[G.i]?.answered){const n=+e.key;const b=document.querySelectorAll('.bin')[n-1];if(n>=1&&b){b.click();return}}
+  if(e.key==='Enter'&&!e.isComposing){const nx=$('#nx');if(nx&&document.activeElement!==nx){e.preventDefault();nx.click()}}});
+if(!EMB)home();else setTimeout(()=>{if(!G&&!$('header'))home()},1500);
+</script>
+</body>
+</html>
