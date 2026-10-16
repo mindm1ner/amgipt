@@ -98,7 +98,8 @@ details.leg summary{cursor:pointer}
 .cell.right{background:var(--ok-bg);box-shadow:inset 0 0 0 3px var(--ok)}
 .cell.wrong{background:var(--no-bg);box-shadow:inset 0 0 0 3px var(--no)}
 .cell.hit{background:var(--accent-soft)}
-.lb{font-size:.72rem;color:var(--sub);text-align:center;padding-top:3px;white-space:nowrap;min-height:1.3em}
+.lb{font-size:.66rem;color:var(--sub);text-align:center;padding-top:3px;white-space:nowrap;min-height:1.3em;width:var(--cw,46px);overflow:visible;letter-spacing:-.04em}
+.cell{margin:0;box-sizing:border-box}.board{gap:0}
 .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;margin-top:14px}
 .opt{display:flex;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-weight:700;text-align:left;min-height:52px}
 .opt:hover{border-color:var(--ink)}
@@ -231,7 +232,7 @@ function sfx(ok){if(!snd)return;const a=ac(),t=a.currentTime+.01,o=a.createOscil
 // ── 보표 ──
 function board(ln,j,o={}){
   const n=ln.cells.length,per=j.unit==='sobak'?j.sobak:1;
-  let h='<div class="bw"><div class="board" style="grid-template-columns:repeat('+n+',auto);--cw:max(27px,min(46px,calc((100vw - 64px)/'+n+')))">';
+  let h='<div class="bw"><div class="board" style="grid-template-columns:repeat('+n+',var(--cw));--cw:max(27px,min(46px,calc((100vw - 64px)/'+n+')))">';
   for(let i=0;i<n;i++)h+='<div class="acc">'+(o.noAcc?'':ln.acc.includes(i+1)?'(&gt;)':'')+'</div>';
   for(let i=0;i<n;i++){const c=(o.cells||ln.cells)[i],cls=['cell'];if(i%per===0)cls.push('bs');if(i===n-1)cls.push('last');
     if(o.hide&&o.hide.includes(i)){cls.push('hide');if(o.fillv&&o.fillv[i]!==undefined)cls.push('filled')}
@@ -351,7 +352,7 @@ function drawQ(){const q=G.qs[G.i],j=q.j,n=q.ln.cells.length;q.answered=false;q.
   else{q.phase='draw';renderDraw()}
   startTimer()}
 function drawBoard(q,res){const j=q.j,ln=q.ln,n=ln.cells.length,per=j.unit==='sobak'?j.sobak:1;
-  let h='<div class="bw"><div class="board" style="grid-template-columns:repeat('+n+',auto);--cw:max(27px,min(46px,calc((100vw - 64px)/'+n+')))">';
+  let h='<div class="bw"><div class="board" style="grid-template-columns:repeat('+n+',var(--cw));--cw:max(27px,min(46px,calc((100vw - 64px)/'+n+')))">';
   for(let i=0;i<n;i++){const on=q.acc.has(i),bad=res&&on!==ln.acc.includes(i+1);
     h+='<button type="button" class="dacc'+(on?' on':'')+(bad?' bad':'')+'" data-a="'+i+'" aria-label="'+(i+1)+'번 칸 강세" aria-pressed="'+on+'">(&gt;)</button>'}
   for(let i=0;i<n;i++){const c=q.cells[i],cls=['cell'];if(i%per===0)cls.push('bs');if(i===n-1)cls.push('last');
