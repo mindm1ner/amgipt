@@ -2948,7 +2948,7 @@ function wonHtml(quiz, weakOnly, pred) {
    내체표는 칠할 격자가 있지만 원문은 흐르는 글이라 없다. 그래서 **빈칸 자리에 그대로 칠한다.**
    앞뒤 문장이 남아 있어야 "어느 대목에서 자꾸 막히는지"가 보인다 — 목록으로 뽑으면 그게 사라진다.
    진하기 = 틀린 횟수(ctHeat와 같은 3단계). 마지막에 한 번 맞혔다고 색이 빠지지 않는다. */
-function wonHeatLineHtml(quiz, doc, i, blanks) {
+function wonHeatLineHtml(quiz, doc, i, blanks, mask) {
   const line = doc.lines[i] || "";
   const { cls, lab } = wonLineAttr(doc, i);
   const mine = blanks.filter(b => b.i === i).sort((a, b) => a.s - b.s);
@@ -2960,7 +2960,7 @@ function wonHeatLineHtml(quiz, doc, i, blanks) {
     const id = wonSid(quiz.id, b);
     const { w, tried, lv } = ctHeat(id);
     const tip = !tried ? "아직 안 푼 자리" : !w ? "틀린 적 없어요" : `${w}번 틀렸어요`;
-    out += `<button type="button" class="hspot${lv ? " h" + lv : tried ? "" : " fresh"}"
+    out += `<button type="button" class="hspot${lv ? " h" + lv : tried ? "" : " fresh"}${mask ? " mask" : ""}"
       data-act="won-heat" data-sid="${esc(id)}" data-k="${esc(b.k)}" data-ans="${esc(ans)}"
       title="${esc(tip)}">${esc(ans)}${w ? `<span class="hn">${w}</span>` : ""}</button>`;
     at = b.e;
@@ -2969,35 +2969,52 @@ function wonHeatLineHtml(quiz, doc, i, blanks) {
   return `<p class="${cls}" data-i="${i}"${lab}>${out}</p>`;
 }
 
-function wonHeatCardHtml(quiz, doc, qi) {
+function wonHeatCardHtml(quiz, doc, qi, mask, min) {
   const dk = wonDocKey(doc);
-  const blanks = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o);
+  /* 거르개(min)에 안 걸린 자리는 칠하지도 가리지도 않고 원문 글자로 둔다. 걸린 자리가 없는 카드는 뺀다 */
+  const blanks = wonList().filter(b => b.q === quiz.id && b.dk === dk && !b.o
+    && (!min || ctHeat(wonSid(quiz.id, b)).w >= min));
   if (!blanks.length) return "";
   const wrongN = blanks.filter(b => ctHeat(wonSid(quiz.id, b)).w).length;
   const body = `<div class="won-body">${
-    wonBodyHtml(doc, i => wonHeatLineHtml(quiz, doc, i, blanks))}</div>
+    wonBodyHtml(doc, i => wonHeatLineHtml(quiz, doc, i, blanks, mask))}</div>
     <div class="heat-detail"></div>`;
   /* 깨끗한 원문까지 다 펴 두면 정작 볼 곳을 찾느라 스크롤을 한참 내린다 (표로 보기와 같은 규칙) */
   return `<section class="q-card won-card won-heat" data-qi="${qi}" data-quiz="${esc(quiz.id)}"
       data-dk="${esc(dk)}">
       <div class="q-head"><span class="qno">${esc(doc.title)}</span>
         <span class="qpts">${wrongN ? `틀린 자리 ${wrongN}` : "깨끗"}</span></div>
-      ${wrongN ? body : `<details class="hclean">
+      ${wrongN || mask ? body : `<details class="hclean">
         <summary>틀린 자리가 없어요 · 원문 펼치기</summary>${body}</details>`}
     </section>`;
 }
 
+/* 가리기: 형광펜 보기에서 뚫어 둔 자리를 가려 두고, 누르면 답이 나온다. 맞음·틀림을 고르면
+   풀기에서 채점한 것과 같은 기록 줄이 생겨 틀린 횟수(형광펜 진하기)와 복습 일정에 들어간다.
+   '얼마나 틀린 것만'(wonMin)은 풀기와 같은 값을 쓴다 — 원문 묶음 하나에 거르개가 둘이면 헷갈린다 */
+function wonMaskOn(quiz) { return !!(S.wonMask && S.wonMask[quiz.id]); }
+function setWonMask(id, on) { S.wonMask = S.wonMask || {}; S.wonMask[id] = on; persist(); }
+
 function wonHeatHtml(quiz) {
+  if (!wonMinCount(quiz, 0))
+    return `<p class="mt-empty">아직 뚫은 빈칸이 없어요. '풀기'에서 외울 자리를 먼저 드래그하세요.</p>`;
+  const mask = wonMaskOn(quiz), min = wonMin(quiz);
   const cards = quiz.questions.map((q, qi) => {
     const doc = wonDoc(quiz, q.no);
-    return doc ? wonHeatCardHtml(quiz, doc, qi) : "";
+    return doc ? wonHeatCardHtml(quiz, doc, qi, mask, min) : "";
   }).join("");
-  if (!cards) return `<p class="mt-empty">아직 뚫은 빈칸이 없어요. '풀기'에서 외울 자리를 먼저 드래그하세요.</p>`;
-  return `<div class="heat-lgd">
+  const bar = `<div class="ctscope wonbar">
+      <div class="cs-row">
+        <button class="ck" data-act="won-mask" aria-pressed="${mask}">가리기</button>
+        ${WON_MIN_STEPS.map(([v, label]) => `<button class="ck" data-act="won-min" data-min="${v}"
+          aria-pressed="${min === v}">${label}<span class="n">${wonMinCount(quiz, v)}</span></button>`).join("")}
+      </div>
+    </div>`;
+  return bar + `<div class="heat-lgd">
       <span><i class="h1"></i>1번</span><span><i class="h2"></i>2번</span>
       <span><i class="h3"></i>3번 이상 틀린 자리</span>
-      <span class="hl-note">자리를 누르면 그때 쓴 답이 나와요</span>
-    </div>${cards}`;
+      <span class="hl-note">${mask ? "누르면 답 · 맞음/틀림이 기록에 들어가요" : "자리를 누르면 그때 쓴 답이 나와요"}</span>
+    </div>${cards || `<p class="mt-empty">${min}번 이상 틀린 자리가 아직 없어요.</p>`}`;
 }
 
 /* ---------- 카드형 형광펜 보기 (누적 약점) ----------
@@ -4681,6 +4698,20 @@ function onAppClick(e) {
   if (act === "won-heat") {
     const sec = btn.closest(".won-heat");
     if (!sec) return;
+    /* 가린 자리: 처음 누르면 답과 맞음·틀림 단추, 판정 전에 다시 누르면 도로 가린다 */
+    if (btn.classList.contains("mask")) {
+      btn.classList.replace("mask", "peek");
+      btn.insertAdjacentHTML("afterend", `<span class="mjudge">
+        <button type="button" data-act="won-mask-judge" data-v="O">맞음</button>
+        <button type="button" data-act="won-mask-judge" data-v="X">틀림</button></span>`);
+      return;
+    }
+    if (btn.classList.contains("peek") && !btn.dataset.judged) {
+      btn.classList.replace("peek", "mask");
+      const j = btn.nextElementSibling;
+      if (j && j.classList.contains("mjudge")) j.remove();
+      return;
+    }
     const box = sec.querySelector(".heat-detail");
     const reopen = box && box.dataset.no === btn.dataset.k;
     document.querySelectorAll(".hspot.sel").forEach(x => x.classList.remove("sel"));
@@ -4765,7 +4796,29 @@ function onAppClick(e) {
     const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
     if (!quiz) return;
     setWonMin(quiz.id, +btn.dataset.min);
-    renderQuiz(quiz.id, false);
+    renderQuiz(quiz.id, false, /\/heat$/.test(location.hash));
+    return;
+  }
+  if (act === "won-mask") {
+    const quiz = DATA.find(d => d.id === decodeURIComponent(location.hash.replace(/^#q\//, "").split("/")[0]));
+    if (!quiz) return;
+    setWonMask(quiz.id, !wonMaskOn(quiz));
+    renderQuiz(quiz.id, false, true);
+    return;
+  }
+  /* 가린 자리 판정. 같은 자리에서 판정을 바꾸면 방금 쓴 줄을 고친다(새 시도가 아니다) */
+  if (act === "won-mask-judge") {
+    const box = btn.closest(".mjudge");
+    const spot = box && box.previousElementSibling;
+    if (!spot || !spot.dataset.sid) return;
+    const v = btn.dataset.v, ans = spot.dataset.ans || "";
+    record(spot.dataset.sid, v, null, v === "O" ? null : [ans], "", null, "(가리고 떠올림)", !!spot.dataset.judged);
+    spot.dataset.judged = "1";
+    box.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+    const { w, tried, lv } = ctHeat(spot.dataset.sid);
+    spot.classList.remove("h1", "h2", "h3", "fresh");
+    if (lv) spot.classList.add("h" + lv); else if (!tried) spot.classList.add("fresh");
+    spot.innerHTML = esc(ans) + (w ? `<span class="hn">${w}</span>` : "");
     return;
   }
   /* 카드형 형광펜 보기: 카드를 누르면 그 카드의 시도 이력을 편다 */

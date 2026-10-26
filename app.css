@@ -983,6 +983,16 @@ table.ctt-silgwa th.ctsub { vertical-align: middle; }
 .hspot .hn { font-size: .66rem; font-weight: 700; color: var(--no); margin-left: 4px;
   background: var(--card); border-radius: 999px; padding: 0 5px; vertical-align: 1px; }
 .hspot.sel { outline: 2px solid var(--ink); outline-offset: -1px; }
+/* 가리기: 글자는 그대로 두고(자리 폭 유지) 색만 지운다. 형광펜 진하기는 가린 채로도 보인다 */
+.hspot.mask { color: transparent; background-color: var(--line); user-select: none; }
+.hspot.mask.h1, .hspot.mask.h2, .hspot.mask.h3 { box-shadow: inset 0 0 0 100vmax rgba(var(--heat), .28); }
+.hspot.mask .hn { visibility: hidden; }
+.hspot.peek { outline: 1px dashed var(--sub); outline-offset: -1px; }
+.mjudge { display: inline-flex; gap: 4px; margin: 0 4px; vertical-align: 1px; white-space: nowrap; }
+.mjudge button { font: inherit; font-size: .72rem; font-weight: 700; line-height: 1.5; padding: 1px 9px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--sub); cursor: pointer; }
+.mjudge button[data-v="O"][aria-pressed="true"] { background: var(--ok-bg); border-color: var(--okb); color: var(--ok); }
+.mjudge button[data-v="X"][aria-pressed="true"] { background: var(--no-bg); border-color: var(--nob); color: var(--no); }
 
 /* ---------- 대조표로 놓인 원문 (통합교과 세 칸 판) ----------
    가로로 읽으면 세 교과의 차이, 세로로 읽으면 한 교과의 흐름. 좁은 화면에서는 가로로 민다
