@@ -1419,10 +1419,12 @@ function homeMainHtml() {
            카드형은 줄 옆에 형광펜 단추를 늘 붙인다 (표·원문은 열면 모드 탭이 있다) */
         const heatQ = quizzes.length === 1 && quizzes[0].kind !== "ct" && quizzes[0].kind !== "won" ? quizzes[0] : null;
         const heatBtn = heatQ ? `<a class="ibtn" href="#q/${encodeURIComponent(heatQ.id)}/heat" title="형광펜 보기">${ico("marker")}</a>` : "";
+        const rs = quizzes.length === 1 ? sessResumeInfo(quizzes[0].id) : null;
         const row = `<button class="mrow click" data-act="open-range" data-range="${esc(name)}" data-subject="${esc(s)}"
             data-single="${quizzes.length === 1 ? esc(quizzes[0].id) : ""}">
           <span class="nm">${esc(name)}</span>
           <span class="cnt">${won ? "원문 " + pages + "쪽" : rc.all + "장"}</span>
+          ${rs ? `<span class="bdg">이어서 ${rs.at}/${rs.total}</span>` : ""}
           ${rc.weak ? `<span class="bdg warn">다시 ${rc.weak}</span>` : ""}
           ${rc.relearn + rc.review ? `<span class="bdg">${rc.relearn + rc.review}</span>` : ""}
         </button>`;
@@ -5016,6 +5018,9 @@ function onAppClick(e) {
          원문도 같다 — 게다가 아직 아무 데도 안 뚫었으면 카드가 0장이라
          세션을 열려 해 봐야 조용히 아무 일도 안 일어난다 (성취기준·안내서가 그랬다) */
       if (z && (z.kind === "ct" || z.kind === "won")) { location.hash = "#q/" + z.id; return; }
+      /* 하다 나간 자리가 있으면 곧장 새로 시작하지 않고 시트(이어서·처음부터)를 연다.
+         예전엔 줄을 누를 때마다 처음부터 다시 돌아 저장된 자리를 덮어썼다(2026-10-30 사회 모형 단계) */
+      if (sessResumeInfo(btn.dataset.single)) { openRangeSheet(btn.dataset.range, btn.dataset.subject); return; }
       if (!startSession("all", "qz:" + btn.dataset.single)) {
         toast("이 범위에는 아직 풀 카드가 없어요");
       }
